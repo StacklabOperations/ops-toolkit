@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DFA Date Calculator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .calculator {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 24px;
+            width: 100%;
+            max-width: 500px;
+        }
+        
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 24px;
+            font-size: 20px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 8px;
+            color: #374151;
+        }
+        
+        input[type="date"] {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            margin: 8px 0;
+        }
+        
+        .range-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #6b7280;
+        }
+        
+        .calculate-btn {
+            width: 100%;
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .calculate-btn:hover {
+            background-color: #2563eb;
+        }
+        
+        .results {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #e5e7eb;
+        }
+        
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .copy-btn {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: none;
+            border: none;
+            color: #6b7280;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: color 0.2s;
+        }
+        
+        .copy-btn:hover {
+            color: #1f2937;
+            background-color: #f3f4f6;
+        }
+        
+        .email-output {
+            background-color: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            padding: 16px;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="calculator">
+        <div class="header">
+            📅 DFA Date Calculator
+        </div>
+        
+        <div class="form-group">
+            <label for="dfaDate">DFA Date</label>
+            <input type="date" id="dfaDate">
+        </div>
+        
+        <div class="form-group">
+            <label for="leadTime">Lead Time: <span id="leadTimeValue">10</span> weeks</label>
+            <input type="range" id="leadTime" min="4" max="18" value="10">
+            <div class="range-labels">
+                <span>4 weeks</span>
+                <span>18 weeks</span>
+            </div>
+        </div>
+        
+        <button class="calculate-btn" onclick="calculateDates()">
+            Calculate Dates
+        </button>
+        
+        <div id="results" class="results hidden">
+            <div class="results-header">
+                <h3>Generated Email:</h3>
+                <button class="copy-btn" onclick="copyToClipboard()">
+                    📋 Copy to Clipboard
+                </button>
+            </div>
+            <div id="emailOutput" class="email-output"></div>
+        </div>
+    </div>
+
+    <script>
+        // Set up date range and defaults
+        const today = new Date();
+        const dfaDateInput = document.getElementById('dfaDate');
+        const leadTimeInput = document.getElementById('leadTime');
+        const leadTimeValue = document.getElementById('leadTimeValue');
+        const results = document.getElementById('results');
+        const emailOutput = document.getElementById('emailOutput');
+
+        // Set date input constraints
+        const minDate = new Date(today);
+        minDate.setDate(today.getDate() - 3);
+        const maxDate = new Date(today);
+        maxDate.setDate(today.getDate() + 3);
+
+        dfaDateInput.min = minDate.toISOString().split('T')[0];
+        dfaDateInput.max = maxDate.toISOString().split('T')[0];
+        dfaDateInput.value = today.toISOString().split('T')[0];
+
+        // Update lead time display
+        leadTimeInput.addEventListener('input', function() {
+            leadTimeValue.textContent = this.value;
+        });
+
+        // Date calculation functions
+        function isWeekend(date) {
+            const day = date.getDay();
+            return day === 0 || day === 6;
+        }
+
+        function addBusinessDays(date, days) {
+            let currentDate = new Date(date);
+            let addedDays = 0;
+            
+            while (addedDays < days) {
+                currentDate.setDate(currentDate.getDate() + 1);
+                if (!isWeekend(currentDate)) {
+                    addedDays++;
+                }
+            }
+            
+            while (isWeekend(currentDate)) {
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            
+            return currentDate;
+        }
+
+        function subtractBusinessDays(date, days) {
+            let currentDate = new Date(date);
+            let subtractedDays = 0;
+            
+            while (subtractedDays < days) {
+                currentDate.setDate(currentDate.getDate() - 1);
+                if (!isWeekend(currentDate)) {
+                    subtractedDays++;
+                }
+            }
+            
+            while (isWeekend(currentDate)) {
+                currentDate.setDate(currentDate.getDate() - 1);
+            }
+            
+            return currentDate;
+        }
+
+        function formatDate(date) {
+            return date.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+
+        function calculateDates() {
+            const selectedDate = new Date(dfaDateInput.value);
+            const leadTimeWeeks = parseInt(leadTimeInput.value);
+            
+            const shippingDate = addBusinessDays(selectedDate, leadTimeWeeks * 5);
+            const balanceInvoiceDate = subtractBusinessDays(shippingDate, 6 * 5);
+            const balancePaymentDueDate = subtractBusinessDays(shippingDate, 10);
+
+            const emailText = `Confirming we have received the DFA.
+
+Important dates for your order:
+- Shipping Date: ${formatDate(shippingDate)}
+- Balance Invoice Send Date: ${formatDate(balanceInvoiceDate)} (6 weeks prior to shipping)
+- Balance Payment Due Date: ${formatDate(balancePaymentDueDate)} (10 days prior to shipping)
+
+Best Regards,
+Jordan`;
+
+            emailOutput.textContent = emailText;
+            results.classList.remove('hidden');
+        }
+
+        function copyToClipboard() {
+            navigator.clipboard.writeText(emailOutput.textContent).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '✅ Copied!';
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

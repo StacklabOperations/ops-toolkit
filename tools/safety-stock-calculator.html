@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safety Stock Calculator - Operations Toolkit</title>
+    <link rel="stylesheet" href="../assets/css/shared-styles.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding-bottom: 40px;
+        }
+
+        .method-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            background: #f7fafc;
+            padding: 5px;
+            border-radius: 10px;
+        }
+
+        .method-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: transparent;
+            color: #4a5568;
+            font-size: 0.95em;
+            font-weight: 500;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .method-btn.active {
+            background: white;
+            color: #667eea;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .method-btn:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .input-section {
+            display: none;
+            animation: fadeIn 0.3s;
+        }
+
+        .input-section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .part-type-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .part-type-option {
+            padding: 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .part-type-option:hover {
+            border-color: #667eea;
+            background: #f7fafc;
+        }
+
+        .part-type-option.selected {
+            border-color: #667eea;
+            background: #edf2f7;
+        }
+
+        .part-type-option input[type="radio"] {
+            display: none;
+        }
+
+        .part-type-label {
+            font-weight: 600;
+            color: #2d3748;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .part-type-factor {
+            font-size: 0.85em;
+            color: #718096;
+        }
+
+        .calculate-btn {
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .result {
+            display: none;
+        }
+
+        .result.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="calculator-container">
+        <h1>Safety Stock Calculator</h1>
+        <p class="subtitle">Calculate optimal safety stock levels for your inventory</p>
+
+        <div class="method-selector">
+            <button class="method-btn active" onclick="switchMethod('simple')">Simple Method</button>
+            <button class="method-btn" onclick="switchMethod('conservative')">Conservative Method</button>
+        </div>
+
+        <!-- Simple Method -->
+        <div id="simple-method" class="input-section active">
+            <div class="input-group">
+                <label>Average Weekly Usage <span class="label-hint">(units per week)</span></label>
+                <input type="number" id="simple-avg-usage" placeholder="e.g., 50" min="0" step="0.01">
+            </div>
+
+            <div class="input-group">
+                <label>Lead Time <span class="label-hint">(weeks)</span></label>
+                <input type="number" id="simple-lead-time" placeholder="e.g., 2" min="0" step="0.1">
+            </div>
+
+            <div class="input-group">
+                <label>Part Criticality</label>
+                <div class="part-type-grid">
+                    <div class="part-type-option selected" onclick="selectPartType('simple', 'critical', 1.75)">
+                        <input type="radio" name="simple-part-type" value="1.75" checked>
+                        <span class="part-type-label">Critical</span>
+                        <span class="part-type-factor">Factor: 1.5-2.0</span>
+                    </div>
+                    <div class="part-type-option" onclick="selectPartType('simple', 'standard', 1.25)">
+                        <input type="radio" name="simple-part-type" value="1.25">
+                        <span class="part-type-label">Standard</span>
+                        <span class="part-type-factor">Factor: 1.0-1.5</span>
+                    </div>
+                    <div class="part-type-option" onclick="selectPartType('simple', 'commodity', 0.75)">
+                        <input type="radio" name="simple-part-type" value="0.75">
+                        <span class="part-type-label">Commodity</span>
+                        <span class="part-type-factor">Factor: 0.5-1.0</span>
+                    </div>
+                </div>
+            </div>
+
+            <button class="calculate-btn" onclick="calculateSimple()">Calculate Safety Stock</button>
+
+            <div id="simple-result" class="result">
+                <div class="result-label">Recommended Safety Stock</div>
+                <div class="result-value" id="simple-result-value">0 units</div>
+                <div class="result-breakdown">
+                    <div class="breakdown-item">
+                        <span class="breakdown-label">Formula:</span>
+                        <span class="breakdown-value" id="simple-formula">-</span>
+                    </div>
+                    <div class="breakdown-item">
+                        <span class="breakdown-label">Safety Factor:</span>
+                        <span class="breakdown-value" id="simple-factor">-</span>
+                    </div>
+                    <div class="breakdown-item">
+                        <span class="breakdown-label">Covers:</span>
+                        <span class="breakdown-value" id="simple-coverage">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <strong>Simple Method:</strong> Uses a safety factor multiplier based on part criticality. Best for getting started quickly with consistent demand patterns.
+            </div>
+        </div>
+
+        <!-- Conservative Method -->
+        <div id="conservative-method" class="input-section">
+            <div class="input-group">
+                <label>Average Weekly Usage <span class="label-hint">(units per week)</span></label>
+                <input type="number" id="cons-avg-usage" placeholder="e.g., 50" min="0" step="0.01">
+            </div>
+
+            <div class="input-group">
+                <label>Maximum Weekly Usage <span class="label-hint">(peak demand weeks)</span></label>
+                <input type="number" id="cons-max-usage" placeholder="e.g., 80" min="0" step="0.01">
+            </div>
+
+            <div class="input-group">
+                <label>Average Lead Time <span class="label-hint">(weeks)</span></label>
+                <input type="number" id="cons-avg-lead-time" placeholder="e.g., 2" min="0" step="0.1">
+            </div>
+
+            <div class="input-group">
+                <label>Maximum Lead Time <span class="label-hint">(worst-case weeks)</span></label>
+                <input type="number" id="cons-max-lead-time" placeholder="e.g., 3" min="0" step="0.1">
+            </div>
+
+            <button class="calculate-btn" onclick="calculateConservative()">Calculate Safety Stock</button>
+
+            <div id="cons-result" class="result">
+                <div class="result-label">Recommended Safety Stock</div>
+                <div class="result-value" id="cons-result-value">0 units</div>
+                <div class="result-breakdown">
+                    <div class="breakdown-item">
+                        <span class="breakdown-label">Max Scenario:</span>
+                        <span class="breakdown-value" id="cons-max">-</span>
+                    </div>
+                    <div class="breakdown-item">
+                        <span class="breakdown-label">Average Scenario:</span>
+                        <span class="breakdown-value" id="cons-avg">-</span>
+                    </div>
+                    <div class="breakdown-item">
+                        <span class="breakdown-label">Safety Buffer:</span>
+                        <span class="breakdown-value" id="cons-buffer">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <strong>Conservative Method:</strong> Accounts for variability in both demand and lead times. Use this when you have historical data showing fluctuating demand or supplier reliability issues.
+            </div>
+        </div>
+    </div>
+
+    <script src="../assets/js/nav.js"></script>
+    <script>
+        // Initialize navigation
+        createToolkitNav('safety-stock');
+
+        let simplePartTypeFactor = 1.75;
+        let simplePartType = 'critical';
+
+        function switchMethod(method) {
+            document.querySelectorAll('.method-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.input-section').forEach(section => section.classList.remove('active'));
+            
+            if (method === 'simple') {
+                document.querySelector('.method-btn:first-child').classList.add('active');
+                document.getElementById('simple-method').classList.add('active');
+            } else {
+                document.querySelector('.method-btn:last-child').classList.add('active');
+                document.getElementById('conservative-method').classList.add('active');
+            }
+        }
+
+        function selectPartType(method, type, factor) {
+            const parent = document.getElementById(`${method}-method`);
+            parent.querySelectorAll('.part-type-option').forEach(opt => opt.classList.remove('selected'));
+            event.currentTarget.classList.add('selected');
+            
+            if (method === 'simple') {
+                simplePartTypeFactor = factor;
+                simplePartType = type;
+            }
+        }
+
+        function calculateSimple() {
+            const avgUsage = parseFloat(document.getElementById('simple-avg-usage').value);
+            const leadTime = parseFloat(document.getElementById('simple-lead-time').value);
+
+            if (isNaN(avgUsage) || isNaN(leadTime) || avgUsage < 0 || leadTime < 0) {
+                alert('Please enter valid positive numbers for all fields');
+                return;
+            }
+
+            const safetyStock = Math.ceil(avgUsage * leadTime * simplePartTypeFactor);
+            const coverageWeeks = (safetyStock / avgUsage).toFixed(1);
+
+            document.getElementById('simple-result-value').textContent = safetyStock.toLocaleString() + ' units';
+            document.getElementById('simple-formula').textContent = `${avgUsage} × ${leadTime} × ${simplePartTypeFactor}`;
+            document.getElementById('simple-factor').textContent = `${simplePartTypeFactor}x (${simplePartType})`;
+            document.getElementById('simple-coverage').textContent = `${coverageWeeks} weeks of average demand`;
+            
+            document.getElementById('simple-result').classList.add('show');
+        }
+
+        function calculateConservative() {
+            const avgUsage = parseFloat(document.getElementById('cons-avg-usage').value);
+            const maxUsage = parseFloat(document.getElementById('cons-max-usage').value);
+            const avgLeadTime = parseFloat(document.getElementById('cons-avg-lead-time').value);
+            const maxLeadTime = parseFloat(document.getElementById('cons-max-lead-time').value);
+
+            if (isNaN(avgUsage) || isNaN(maxUsage) || isNaN(avgLeadTime) || isNaN(maxLeadTime)) {
+                alert('Please enter valid numbers for all fields');
+                return;
+            }
+
+            if (maxUsage < avgUsage) {
+                alert('Maximum usage should be greater than or equal to average usage');
+                return;
+            }
+
+            if (maxLeadTime < avgLeadTime) {
+                alert('Maximum lead time should be greater than or equal to average lead time');
+                return;
+            }
+
+            const maxScenario = maxUsage * maxLeadTime;
+            const avgScenario = avgUsage * avgLeadTime;
+            const safetyStock = Math.ceil(maxScenario - avgScenario);
+
+            document.getElementById('cons-result-value').textContent = safetyStock.toLocaleString() + ' units';
+            document.getElementById('cons-max').textContent = `${maxUsage} × ${maxLeadTime} = ${maxScenario.toFixed(1)} units`;
+            document.getElementById('cons-avg').textContent = `${avgUsage} × ${avgLeadTime} = ${avgScenario.toFixed(1)} units`;
+            document.getElementById('cons-buffer').textContent = `${safetyStock} units`;
+            
+            document.getElementById('cons-result').classList.add('show');
+        }
+
+        // Allow Enter key to trigger calculation
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const activeMethod = document.querySelector('.input-section.active').id;
+                if (activeMethod === 'simple-method') {
+                    calculateSimple();
+                } else {
+                    calculateConservative();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

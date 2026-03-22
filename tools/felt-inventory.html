@@ -414,7 +414,9 @@ async function fetchAllParts(token) {
       `<div class="loading">Loading from Aligni… page ${page}</div>`;
     const res = await fetch(ENDPOINT, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+      headers: IS_LOCAL
+        ? { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` }
+        : { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: makeQuery(cursor) })
     });
     const json = await res.json();
@@ -439,9 +441,12 @@ function showTokenInput() {
 }
 
 // ── Main load ─────────────────────────────────────────────────────────────────
+const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
 async function loadData() {
   const token = document.getElementById('apiToken').value.trim();
-  if (!token) { showTokenInput(); return; }
+  // On GitHub Pages the Cloudflare Worker handles auth — no token needed in browser
+  if (!token && IS_LOCAL) { showTokenInput(); return; }
 
   document.getElementById('splashDots').style.display = 'flex';
   document.getElementById('splashToken').classList.remove('visible');
@@ -585,6 +590,9 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   if (token) {
     document.getElementById('apiToken').value = token;
+    loadData();
+  } else if (!IS_LOCAL) {
+    // On GitHub Pages — no token needed, Cloudflare Worker handles auth
     loadData();
   } else {
     showTokenInput();

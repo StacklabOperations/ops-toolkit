@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safety Stock Calculator - Operations Toolkit</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background: #000;
+            min-height: 100vh;
+            color: #BFBFBF;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .nav {
+            width: 100%;
+            max-width: 560px;
+            margin-bottom: 40px;
+        }
+
+        .nav a {
+            font-size: 0.65rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: #444;
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+
+        .nav a:hover { color: #BFBFBF; }
+
+        .card {
+            background: #0d0d0d;
+            border: 1px solid #1e1e1e;
+            border-radius: 4px;
+            padding: 36px;
+            width: 100%;
+            max-width: 560px;
+        }
+
+        h1 {
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: #E6E6E6;
+            margin-bottom: 6px;
+        }
+
+        .subtitle {
+            font-size: 0.7rem;
+            letter-spacing: 0.08em;
+            color: #444;
+            margin-bottom: 32px;
+        }
+
+        .input-group { margin-bottom: 20px; }
+
+        label {
+            display: block;
+            font-size: 0.65rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #BFBFBF;
+            margin-bottom: 8px;
+        }
+
+        .label-hint {
+            font-weight: 400;
+            color: #444;
+            letter-spacing: 0.06em;
+            text-transform: none;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            background: #000;
+            border: 1px solid #222;
+            color: #E6E6E6;
+            border-radius: 2px;
+            padding: 10px 14px;
+            font-size: 0.9rem;
+            font-family: inherit;
+            transition: border-color 0.15s;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #555;
+        }
+
+        input[type="number"]::placeholder { color: #333; }
+
+        .divider {
+            border: none;
+            border-top: 1px solid #1a1a1a;
+            margin: 28px 0;
+        }
+
+        .calculate-btn {
+            width: 100%;
+            background: #BFBFBF;
+            color: #000;
+            border: none;
+            border-radius: 2px;
+            padding: 12px;
+            font-size: 0.62rem;
+            font-weight: 800;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            cursor: pointer;
+            font-family: inherit;
+            margin-top: 8px;
+            transition: background 0.15s;
+        }
+
+        .calculate-btn:hover { background: #ddd; }
+
+        /* Results */
+        .result { display: none; margin-top: 28px; }
+        .result.show { display: block; }
+
+        .result-label {
+            font-size: 0.65rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #BFBFBF;
+            margin-bottom: 4px;
+        }
+
+        .result-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #E6E6E6;
+            letter-spacing: 0.01em;
+            margin-bottom: 16px;
+        }
+
+        .result-breakdown {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 16px;
+            background: #000;
+            border: 1px solid #1a1a1a;
+            border-radius: 2px;
+        }
+
+        .breakdown-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+        }
+
+        .breakdown-label { color: #555; letter-spacing: 0.04em; }
+        .breakdown-value { color: #BFBFBF; }
+
+        .order-section { margin-top: 28px; }
+
+        .order-section h2 {
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: #E6E6E6;
+            margin-bottom: 20px;
+        }
+
+        .order-result {
+            margin-top: 20px;
+            padding: 20px;
+            background: #000;
+            border: 1px solid #1a1a1a;
+            border-radius: 2px;
+        }
+
+        .order-result-label {
+            font-size: 0.65rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #BFBFBF;
+            margin-bottom: 4px;
+        }
+
+        .order-result-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #E6E6E6;
+            margin-bottom: 16px;
+        }
+
+        .info-box {
+            margin-top: 20px;
+            padding: 14px;
+            border: 1px solid #1a1a1a;
+            border-radius: 2px;
+            font-size: 0.7rem;
+            color: #444;
+            line-height: 1.7;
+            letter-spacing: 0.03em;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="nav">
+        <a href="../index.html">← Operations Toolkit</a>
+    </div>
+
+    <div class="card">
+        <h1>Safety Stock Calculator</h1>
+        <p class="subtitle">Calculate safety stock (Min) and order quantities (Max)</p>
+
+        <div class="input-group">
+            <label>Average Weekly Usage <span class="label-hint">(units per week)</span></label>
+            <input type="number" id="avg-usage" placeholder="e.g., 50" min="0" step="0.01">
+        </div>
+
+        <div class="input-group">
+            <label>Maximum Weekly Usage <span class="label-hint">(peak demand weeks)</span></label>
+            <input type="number" id="max-usage" placeholder="e.g., 80" min="0" step="0.01">
+        </div>
+
+        <div class="input-group">
+            <label>Average Lead Time <span class="label-hint">(weeks)</span></label>
+            <input type="number" id="avg-lead-time" placeholder="e.g., 2" min="0" step="0.1">
+        </div>
+
+        <div class="input-group">
+            <label>Maximum Lead Time <span class="label-hint">(worst-case weeks)</span></label>
+            <input type="number" id="max-lead-time" placeholder="e.g., 3" min="0" step="0.1">
+        </div>
+
+        <button class="calculate-btn" onclick="calculate()">Calculate Safety Stock</button>
+
+        <div id="result" class="result">
+            <hr class="divider">
+            <div class="result-label">Safety Stock (Min)</div>
+            <div class="result-value" id="result-value">0 units</div>
+            <div class="result-breakdown">
+                <div class="breakdown-item">
+                    <span class="breakdown-label">Max Scenario</span>
+                    <span class="breakdown-value" id="max-scenario">—</span>
+                </div>
+                <div class="breakdown-item">
+                    <span class="breakdown-label">Average Scenario</span>
+                    <span class="breakdown-value" id="avg-scenario">—</span>
+                </div>
+                <div class="breakdown-item">
+                    <span class="breakdown-label">Safety Buffer</span>
+                    <span class="breakdown-value" id="buffer">—</span>
+                </div>
+            </div>
+
+            <div class="order-section">
+                <h2>Min / Max Ordering</h2>
+
+                <div class="input-group">
+                    <label>Review / Order Period <span class="label-hint">(weeks between orders)</span></label>
+                    <input type="number" id="review-period" placeholder="e.g., 4" min="1" step="0.5" value="4">
+                </div>
+
+                <div class="input-group">
+                    <label>Current Inventory <span class="label-hint">(units on hand, optional)</span></label>
+                    <input type="number" id="current-inventory" placeholder="e.g., 120" min="0" step="1">
+                </div>
+
+                <button class="calculate-btn" onclick="calculateOrder()">Calculate Order Quantity</button>
+
+                <div id="order-result" class="order-result" style="display:none;">
+                    <div class="order-result-label">Order This Amount</div>
+                    <div class="order-result-value" id="order-value">0 units</div>
+                    <div class="result-breakdown">
+                        <div class="breakdown-item">
+                            <span class="breakdown-label">Min (Safety Stock)</span>
+                            <span class="breakdown-value" id="order-min">—</span>
+                        </div>
+                        <div class="breakdown-item">
+                            <span class="breakdown-label">Max (Target Stock)</span>
+                            <span class="breakdown-value" id="order-max">—</span>
+                        </div>
+                        <div class="breakdown-item">
+                            <span class="breakdown-label">Current Inventory</span>
+                            <span class="breakdown-value" id="order-current">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <strong style="color:#BFBFBF">Safety Stock (Min):</strong> Minimum buffer to protect against demand spikes and supplier delays.&nbsp;&nbsp;<strong style="color:#BFBFBF">Min/Max:</strong> When inventory hits Min, order enough to reach Max.
+        </div>
+    </div>
+
+    <script>
+        let calculatedSafetyStock = 0;
+        let calculatedAvgUsage = 0;
+
+        function calculate() {
+            const avgUsage    = parseFloat(document.getElementById('avg-usage').value);
+            const maxUsage    = parseFloat(document.getElementById('max-usage').value);
+            const avgLeadTime = parseFloat(document.getElementById('avg-lead-time').value);
+            const maxLeadTime = parseFloat(document.getElementById('max-lead-time').value);
+
+            if (isNaN(avgUsage) || isNaN(maxUsage) || isNaN(avgLeadTime) || isNaN(maxLeadTime)) {
+                alert('Please enter valid numbers for all fields'); return;
+            }
+            if (maxUsage < avgUsage)       { alert('Maximum usage should be ≥ average usage'); return; }
+            if (maxLeadTime < avgLeadTime) { alert('Maximum lead time should be ≥ average lead time'); return; }
+
+            const maxScenario  = maxUsage * maxLeadTime;
+            const avgScenario  = avgUsage * avgLeadTime;
+            const safetyStock  = Math.ceil(maxScenario - avgScenario);
+
+            calculatedSafetyStock = safetyStock;
+            calculatedAvgUsage    = avgUsage;
+
+            document.getElementById('result-value').textContent  = safetyStock.toLocaleString() + ' units';
+            document.getElementById('max-scenario').textContent  = `${maxUsage} × ${maxLeadTime} = ${maxScenario.toFixed(1)} units`;
+            document.getElementById('avg-scenario').textContent  = `${avgUsage} × ${avgLeadTime} = ${avgScenario.toFixed(1)} units`;
+            document.getElementById('buffer').textContent        = `${safetyStock} units`;
+            document.getElementById('result').classList.add('show');
+        }
+
+        function calculateOrder() {
+            if (calculatedSafetyStock === 0) { alert('Please calculate safety stock first'); return; }
+
+            const reviewPeriod     = parseFloat(document.getElementById('review-period').value);
+            const currentInventory = parseFloat(document.getElementById('current-inventory').value) || 0;
+
+            if (isNaN(reviewPeriod) || reviewPeriod <= 0) { alert('Please enter a valid review period'); return; }
+
+            const min      = calculatedSafetyStock;
+            const max      = min + (calculatedAvgUsage * reviewPeriod);
+            const orderQty = Math.max(0, Math.ceil(max - currentInventory));
+
+            document.getElementById('order-value').textContent   = orderQty.toLocaleString() + ' units';
+            document.getElementById('order-min').textContent     = `${min.toLocaleString()} units`;
+            document.getElementById('order-max').textContent     = `${Math.ceil(max).toLocaleString()} units`;
+            document.getElementById('order-current').textContent = currentInventory > 0 ? `${currentInventory.toLocaleString()} units` : 'Not specified';
+            document.getElementById('order-result').style.display = 'block';
+        }
+
+        document.addEventListener('keypress', e => {
+            if (e.key === 'Enter') {
+                document.getElementById('result').classList.contains('show') ? calculateOrder() : calculate();
+            }
+        });
+    </script>
+</body>
+</html>

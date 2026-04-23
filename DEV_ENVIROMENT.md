@@ -4,6 +4,9 @@ This document is the first thing any Claude Code session should read
 before building anything in this repo. It covers the full stack, 
 deployment process, and standard build pattern.
 
+> **End every Claude Code session with DEVSUM** to generate a structured 
+> handoff report. Bring that report back to the MRP project chat to 
+> update the context docs. DEVSUM prompt is defined in CLAUDE.md.
 ---
 
 ## Repo

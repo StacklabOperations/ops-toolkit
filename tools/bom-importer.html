@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STACKABL — BOM Bulk Importer</title>
+<style>
+/* ── Theme Variables ── */
+:root {
+  --bg:             #000000;
+  --bg-card:        #0d0d0d;
+  --bg-hover:       #111111;
+  --border:         #1e1e1e;
+  --border-mid:     #222222;
+  --border-strong:  #333333;
+  --text-hi:        #E6E6E6;
+  --text:           #BFBFBF;
+  --text-muted:     #555555;
+  --text-ghost:     #444444;
+  --btn-bg:         #BFBFBF;
+  --btn-color:      #000000;
+  --btn-hover:      #E6E6E6;
+  --btn-dis-bg:     #333333;
+  --btn-dis-color:  #666666;
+  --ghost-color:    #DDDDDD;
+  --ghost-border:   #222222;
+  --ghost-hover:    #555555;
+  --progress-bg:    #111111;
+  --progress-fill:  #BFBFBF;
+  --row-border:     #111111;
+  --diff-border:    #1a1a1a;
+  --divider:        #1a1a1a;
+}
+
+[data-theme="light"] {
+  --bg:             #f2f2f2;
+  --bg-card:        #ffffff;
+  --bg-hover:       #e8e8e8;
+  --border:         #e0e0e0;
+  --border-mid:     #cccccc;
+  --border-strong:  #bbbbbb;
+  --text-hi:        #111111;
+  --text:           #333333;
+  --text-muted:     #888888;
+  --text-ghost:     #aaaaaa;
+  --btn-bg:         #111111;
+  --btn-color:      #ffffff;
+  --btn-hover:      #333333;
+  --btn-dis-bg:     #cccccc;
+  --btn-dis-color:  #999999;
+  --ghost-color:    #333333;
+  --ghost-border:   #cccccc;
+  --ghost-hover:    #888888;
+  --progress-bg:    #e0e0e0;
+  --progress-fill:  #333333;
+  --row-border:     #ebebeb;
+  --diff-border:    #e0e0e0;
+  --divider:        #e0e0e0;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 40px 20px 80px;
+  transition: background 0.2s, color 0.2s;
+}
+
+/* ── Nav ── */
+.nav {
+  margin-bottom: 40px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav a {
+  font-size: 0.72rem; font-weight: 400;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text); text-decoration: none;
+}
+.nav a:hover { color: var(--text-hi); }
+
+.theme-toggle {
+  background: transparent; border: 1px solid var(--border-mid);
+  color: var(--text-muted); border-radius: 2px;
+  padding: 5px 10px; font-size: 0.58rem; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  cursor: pointer; font-family: inherit;
+  transition: border-color 0.15s, color 0.15s;
+}
+.theme-toggle:hover { border-color: var(--text-muted); color: var(--text); }
+
+.page-header { margin-bottom: 40px; }
+.page-title {
+  font-size: 1.1rem; font-weight: 800;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--text-hi); margin-bottom: 8px;
+}
+.page-subtitle { font-size: 0.75rem; letter-spacing: 0.06em; color: var(--text); }
+
+.content { max-width: 1000px; }
+
+/* ── Drop Zone ── */
+.drop-zone {
+  border: 1px dashed var(--border-strong); background: var(--bg-card);
+  border-radius: 2px; padding: 60px 40px;
+  text-align: center; cursor: pointer;
+  transition: border-color 0.15s; margin-bottom: 32px;
+}
+.drop-zone.drag-over { border-color: var(--text-muted); background: var(--bg-hover); }
+.drop-zone.compact   { padding: 20px 40px; }
+.drop-zone-label {
+  font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--text); margin-bottom: 8px;
+}
+.drop-zone.compact .drop-zone-label { margin-bottom: 0; }
+.drop-zone-sub {
+  font-size: 0.65rem; letter-spacing: 0.08em;
+  color: var(--text-muted); text-transform: uppercase;
+}
+.drop-zone.compact .drop-zone-sub { display: none; }
+#fileInput { display: none; }
+
+/* ── Summary Bar ── */
+.summary-bar {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 2px; padding: 16px 20px;
+  margin-bottom: 24px; display: flex;
+  align-items: center; gap: 24px; flex-wrap: wrap;
+}
+.summary-bar .stat { display: flex; flex-direction: column; gap: 3px; }
+.summary-bar .stat-label {
+  font-size: 0.65rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.summary-bar .stat-val { font-size: 1.1rem; font-weight: 700; color: var(--text-hi); }
+.summary-bar .stat-val.green  { color: #4CAF50; }
+.summary-bar .stat-val.orange { color: #FF9800; }
+.summary-bar .stat-val.red    { color: #f44336; }
+.summary-divider { width: 1px; height: 36px; background: var(--border); flex-shrink: 0; }
+
+/* ── Section Label ── */
+.section-label {
+  font-size: 0.65rem; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 12px;
+}
+
+/* ── Preview Table ── */
+.preview-table-wrap { overflow-x: auto; margin-bottom: 28px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.72rem; letter-spacing: 0.04em; }
+thead th {
+  text-align: left; font-size: 0.65rem; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-muted);
+  padding: 8px 12px 8px 0; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+tbody td {
+  padding: 12px 12px 12px 0; border-bottom: 1px solid var(--row-border);
+  color: var(--text); vertical-align: top;
+}
+tbody tr:last-child td { border-bottom: none; }
+.td-file  { font-size: 0.65rem; color: var(--text-muted); max-width: 180px; word-break: break-all; }
+.td-mpn   { font-size: 0.72rem; font-weight: 700; color: var(--text-hi); letter-spacing: 0.04em; white-space: nowrap; }
+.found-yes { color: #4CAF50; font-weight: 700; }
+.found-no  { color: #f44336; font-weight: 700; }
+.state-draft    { color: var(--text); }
+.state-released { color: #FF9800; }
+.action-import  { color: #4CAF50; }
+.action-replace { color: #FF9800; }
+.action-newrev  { color: #FF9800; }
+.action-skip    { color: var(--text-muted); }
+.status-pending    { color: var(--text); }
+.status-processing { color: var(--text); }
+.status-done       { color: #4CAF50; font-weight: 700; }
+.status-error      { color: #f44336; }
+.status-skip       { color: var(--text-muted); }
+
+/* ── Buttons ── */
+.btn-primary {
+  background: var(--btn-bg); color: var(--btn-color); border: none; border-radius: 2px;
+  padding: 14px 32px; font-size: 0.72rem; font-weight: 800;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  cursor: pointer; font-family: inherit; transition: background 0.15s;
+}
+.btn-primary:hover    { background: var(--btn-hover); }
+.btn-primary:disabled { background: var(--btn-dis-bg); color: var(--btn-dis-color); cursor: not-allowed; }
+
+.btn-ghost {
+  background: transparent; color: var(--ghost-color); border: 1px solid var(--ghost-border);
+  border-radius: 2px; padding: 8px 16px; font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  cursor: pointer; font-family: inherit; transition: border-color 0.15s;
+}
+.btn-ghost:hover { border-color: var(--ghost-hover); }
+
+/* ── Progress ── */
+.progress-bar-wrap {
+  background: var(--progress-bg); border-radius: 2px; height: 3px;
+  margin-bottom: 12px; overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--progress-fill); border-radius: 2px;
+  transition: width 0.3s ease; width: 0%;
+}
+.progress-label {
+  font-size: 0.65rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--text-muted); margin-bottom: 28px;
+}
+
+/* ── Done Banner ── */
+.done-banner {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 2px;
+  padding: 20px 24px; font-size: 0.72rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-hi); margin-top: 24px;
+}
+
+/* ── Review & Release Section ── */
+.review-section { margin-top: 48px; }
+.review-section-header {
+  display: flex; align-items: center;
+  justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
+}
+.review-controls { display: flex; gap: 8px; }
+
+.review-card {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 2px;
+  padding: 20px 24px; margin-bottom: 12px;
+}
+.review-card.selected { border-color: var(--border-strong); }
+
+.review-card-top {
+  display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 16px; margin-bottom: 12px;
+}
+.review-card-left  { display: flex; align-items: flex-start; gap: 14px; }
+.review-card-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+
+.review-checkbox {
+  width: 16px; height: 16px; flex-shrink: 0;
+  accent-color: var(--text); cursor: pointer; margin-top: 2px;
+}
+.review-card-info { display: flex; flex-direction: column; gap: 4px; }
+.review-mpn {
+  font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-hi);
+}
+.review-meta {
+  font-size: 0.65rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+
+.audit-badge {
+  font-size: 0.6rem; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; padding: 3px 8px; border-radius: 2px;
+}
+.badge-pass    { background: transparent; border: 1px solid #4CAF50; color: #4CAF50; }
+.badge-warn    { background: transparent; border: 1px solid #FF9800; color: #FF9800; }
+.badge-loading { background: transparent; border: 1px solid var(--border-strong); color: var(--text-muted); }
+
+.review-card-status {
+  font-size: 0.65rem; letter-spacing: 0.06em;
+  color: var(--text-muted); margin-top: 4px; min-height: 16px;
+}
+
+/* Diff table */
+.diff-table { width: 100%; margin-top: 4px; }
+.diff-table thead th {
+  font-size: 0.6rem; letter-spacing: 0.14em; color: var(--text-ghost);
+  padding: 6px 12px 6px 0; border-bottom: 1px solid var(--diff-border);
+}
+.diff-table tbody td {
+  font-size: 0.68rem; padding: 8px 12px 8px 0;
+  border-bottom: 1px solid var(--diff-border); color: var(--text);
+}
+.diff-table tbody tr:last-child td { border-bottom: none; }
+.diff-mpn { font-weight: 700; color: var(--text-hi); letter-spacing: 0.04em; }
+.diff-val { color: var(--text); }
+.diff-val.changed { color: #FF9800; }
+.diff-val.empty   { color: var(--text-ghost); }
+.audit-ok   { color: #4CAF50; font-weight: 700; }
+.audit-warn { color: #FF9800; }
+.audit-miss { color: #f44336; }
+
+/* Release footer */
+.review-footer {
+  margin-top: 24px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+}
+.release-tally {
+  font-size: 0.65rem; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+
+/* ── API Activity Bar ── */
+#apiBar {
+  position: fixed; top: 0; left: 0; right: 0; height: 2px;
+  z-index: 9999; pointer-events: none;
+  background: linear-gradient(90deg,
+    transparent 0%, var(--progress-fill) 40%, var(--text-hi) 50%, var(--progress-fill) 60%, transparent 100%);
+  background-size: 300% 100%;
+  opacity: 0; transition: opacity 0.15s;
+  animation: apiBarSweep 1.2s linear infinite;
+}
+#apiBar.active { opacity: 1; }
+@keyframes apiBarSweep {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+/* ── Utility ── */
+.hidden { display: none !important; }
+.section-divider { height: 1px; background: var(--divider); margin: 40px 0; }
+</style>
+</head>
+<body>
+
+<div id="apiBar"></div>
+<div class="content">
+
+  <div class="nav">
+    <a href="../index.html">← Operations Toolkit</a>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">Light Mode</button>
+  </div>
+
+  <div class="page-header">
+    <div class="page-title">BOM Bulk Importer</div>
+    <div class="page-subtitle">Drop CSV part-list files to preview and push BOMs into Aligni</div>
+  </div>
+
+  <!-- Step 1: Drop Zone -->
+  <div class="drop-zone" id="dropZone">
+    <div class="drop-zone-label">Drop CSV Files Here</div>
+    <div class="drop-zone-sub">or click to browse</div>
+  </div>
+  <input type="file" id="fileInput" multiple accept=".csv">
+
+  <!-- Steps 2–5: Preview + Import -->
+  <div id="previewSection" class="hidden">
+
+    <div class="summary-bar" id="summaryBar">
+      <div class="stat">
+        <div class="stat-label">Ready to Import</div>
+        <div class="stat-val green" id="countReady">0</div>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="stat">
+        <div class="stat-label">New Revision Needed</div>
+        <div class="stat-val orange" id="countNewRev">0</div>
+      </div>
+      <div class="summary-divider"></div>
+      <div class="stat">
+        <div class="stat-label">Will Skip</div>
+        <div class="stat-val red" id="countSkip">0</div>
+      </div>
+    </div>
+
+    <div class="section-label">File Preview</div>
+    <div class="preview-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:32px;text-align:right;padding-right:12px">#</th>
+            <th>File</th>
+            <th>Assembly MPN</th>
+            <th>P/N</th>
+            <th>Found?</th>
+            <th>Current State</th>
+            <th>Action</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="previewTableBody"></tbody>
+      </table>
+    </div>
+
+    <div id="confirmSection" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <button class="btn-primary" id="confirmBtn" onclick="runImport()">Confirm and Import</button>
+      <button class="btn-ghost" onclick="testRateLimit()" id="rateLimitBtn">⚡ Measure Rate Limit</button>
+      <span id="rateLimitResult" style="font-size:0.62rem;color:#555;letter-spacing:0.06em"></span>
+    </div>
+
+    <div id="progressSection" class="hidden">
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progressBar"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;margin-top:8px">
+        <div class="progress-label" id="progressLabel">Processing…</div>
+        <button class="btn-ghost hidden" id="abortBtn" onclick="abortImport()"
+                style="color:#f44336;border-color:#331111;font-size:0.6rem;padding:4px 12px">
+          ✕ Abort &amp; Revert
+        </button>
+      </div>
+    </div>
+
+    <div class="done-banner hidden" id="doneBanner"></div>
+
+  </div>
+
+  <!-- Step 6: Review & Release (hidden until import completes) -->
+  <div id="reviewSection" class="hidden">
+    <div class="section-divider"></div>
+    <div class="review-section-header">
+      <div class="section-label" style="margin-bottom:0">Review & Release</div>
+      <div class="review-controls">
+        <button class="btn-ghost" onclick="selectAllReview(true)">Select All</button>
+        <button class="btn-ghost" onclick="selectAllReview(false)">Deselect All</button>
+      </div>
+    </div>
+    <div id="reviewCards"></div>
+    <div class="review-footer">
+      <button class="btn-primary" id="releaseBtn" onclick="releaseSelected()">Release Selected</button>
+      <div class="release-tally" id="releaseTally"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+//  Constants
+// ─────────────────────────────────────────────────────────────
+const WORKER_URL    = 'https://stackabl-aligni-proxy.operations-dae.workers.dev/';
+const SKIP_PART_NUM = '100464';
+const IMPORT_DELAY  = 6100; // 6.1s between calls — keeps us under 10 req/min (upgrade pending)
+
+// ─────────────────────────────────────────────────────────────
+//  API helper
+// ─────────────────────────────────────────────────────────────
+let _apiInflight = 0;
+function _apiActive(on) {
+  _apiInflight = Math.max(0, _apiInflight + (on ? 1 : -1));
+  document.getElementById('apiBar').classList.toggle('active', _apiInflight > 0);
+}
+
+async function aligniQuery(query, variables = {}) {
+  _apiActive(true);
+  try {
+    const res  = await fetch(WORKER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables })
+    });
+    const json = await res.json();
+    if (json.errors?.length && !json.data) {
+      throw new Error(json.errors[0].message);
+    }
+    return json;
+  } finally {
+    _apiActive(false);
+  }
+}
+
+// Wraps aligniQuery with automatic retry on rate-limit errors.
+// If Aligni returns "Too many requests", waits RATE_LIMIT_WAIT ms and retries.
+const RATE_LIMIT_WAIT = 62000; // 62 seconds — full 60s sliding window + 2s buffer
+async function aligniQueryRetry(query, variables = {}) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await aligniQuery(query, variables);
+    } catch (err) {
+      if (err.message.toLowerCase().includes('too many') && attempt < 3) {
+        setRateLimitStatus(true, attempt + 1);
+        await delay(RATE_LIMIT_WAIT);
+        setRateLimitStatus(false);
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
+function setRateLimitStatus(waiting, attempt = 0) {
+  const label = document.getElementById('progressLabel');
+  if (!label) return;
+  if (waiting) {
+    label.style.color = '#FF9800';
+    label.textContent = `Rate limit hit — waiting 62s before retry ${attempt}/3…`;
+  } else {
+    label.style.color = '';
+    label.textContent = label.dataset.lastNormal || 'Processing…';
+  }
+}
+
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Returns the next revision name by scanning ALL existing revisions (not just active),
+// and preserving the zero-pad width of the existing names.
+function nextRevName(allRevisions) {
+  const nums   = allRevisions.map(r => parseInt(r.revisionName) || 0);
+  const maxNum = Math.max(...nums, 0);
+  const next   = maxNum + 1;
+  const sample = allRevisions[0]?.revisionName ?? '1';
+  const pad    = /^\d+$/.test(sample) ? Math.max(sample.length, String(next).length) : 0;
+  return pad > 0 ? String(next).padStart(pad, '0') : String(next);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CSV + Filename parsing
+// ─────────────────────────────────────────────────────────────
+function parseCsvLine(line) {
+  const result = []; let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQ = !inQ; }
+    else if (ch === ',' && !inQ) { result.push(cur.trim()); cur = ''; }
+    else { cur += ch; }
+  }
+  result.push(cur.trim()); return result;
+}
+
+function parseCsv(text) {
+  const lines = text.trim().split(/\r?\n/);
+  const headers = parseCsvLine(lines[0]);
+  return lines.slice(1).filter(l => l.trim()).map(line => {
+    const vals = parseCsvLine(line), obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] ?? ''; });
+    return obj;
+  });
+}
+
+function parseMpnFromFilename(name) {
+  const m = name.match(/^\d{8}-(.+)-01-Part-List\.csv$/i);
+  return m ? m[1] : null;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  GraphQL queries / mutations
+// ─────────────────────────────────────────────────────────────
+
+// Aligni's `eq` filter uses a custom OperatorScalar — value must be inlined.
+function buildLookupPart(mpn) {
+  return `{
+  parts(filters: [{ field: "manufacturerPn", value: { eq: "${mpn}" } }]) {
+    nodes {
+      id partNumber manufacturerPn
+      revisions {
+        nodes {
+          id revisionName status active
+          subparts {
+            nodes {
+              id quantity
+              childPart { manufacturerPn partNumber unit { name } }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+}
+
+function buildLookupComponent(mpn) {
+  return `{
+  parts(filters: [{ field: "manufacturerPn", value: { eq: "${mpn}" } }]) {
+    nodes {
+      id partNumber
+      revisions { nodes { id revisionName active } }
+    }
+  }
+}`;
+}
+
+const CREATE_REVISION = `
+mutation ($sourceId: ID!, $input: PartRevisionCreateInput!) {
+  partRevisionCreate(
+    sourcePartRevisionId: $sourceId
+    partRevisionInput: $input
+    copySubparts: false
+  ) { partRevision { id revisionName } errors }
+}`;
+
+const CREATE_SUBPART = `
+mutation ($input: SubpartInput!) {
+  subpartCreate(subpartInput: $input) { subpart { id } errors }
+}`;
+
+const DELETE_SUBPART = `
+mutation ($id: ID!) {
+  subpartDelete(subpartId: $id) { errors }
+}`;
+
+const RELEASE_REVISION = `
+mutation ($id: ID!) {
+  partRevisionRelease(
+    partRevisionId: $id
+    partRevisionReleaseInput: { revisionActive: true }
+  ) { partRevision { id revisionName status active } errors }
+}`;
+
+const DELETE_REVISION = `
+mutation ($id: ID!) {
+  partRevisionDelete(partRevisionId: $id) { errors }
+}`;
+
+// ─────────────────────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────────────────────
+// fileQueue entries:
+// { file, mpn, csvRows, found, part, activeRevision, action,
+//   existingBomItems, rowEl, statusEl,
+//   importedRevisionId, auditItems }
+let fileQueue        = [];
+let abortRequested   = false;
+
+// Component revision ID cache — O-CUT-DISC5 and similar shared operation parts
+// appear in every file. Look them up once and reuse across the whole batch.
+let componentRevCache = {};
+
+// ─────────────────────────────────────────────────────────────
+//  Drop Zone
+// ─────────────────────────────────────────────────────────────
+const dropZone  = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  handleFiles([...e.dataTransfer.files]);
+});
+fileInput.addEventListener('change', () => { handleFiles([...fileInput.files]); fileInput.value = ''; });
+
+// ─────────────────────────────────────────────────────────────
+//  File handler — dry-run lookups
+// ─────────────────────────────────────────────────────────────
+async function handleFiles(newFiles) {
+  const csvFiles = newFiles.filter(f => f.name.toLowerCase().endsWith('.csv'));
+  if (!csvFiles.length) return;
+
+  dropZone.classList.add('compact');
+  dropZone.querySelector('.drop-zone-label').textContent = '+ Drop More Files';
+  document.getElementById('previewSection').classList.remove('hidden');
+  document.getElementById('confirmBtn').disabled = false;
+  document.getElementById('progressSection').classList.add('hidden');
+  document.getElementById('doneBanner').classList.add('hidden');
+  document.getElementById('reviewSection').classList.add('hidden');
+  componentRevCache = {}; // reset cache for each new batch
+
+  for (const file of csvFiles) {
+    await processFile(file);
+    await delay(IMPORT_DELAY);
+  }
+  updateSummary();
+}
+
+async function processFile(file) {
+  const mpn   = parseMpnFromFilename(file.name);
+  const tbody = document.getElementById('previewTableBody');
+  const rowNum = tbody.children.length + 1;
+
+  const row      = document.createElement('tr');
+  const statusEl = document.createElement('td');
+  statusEl.className   = 'status-pending';
+  statusEl.textContent = '⏳ Looking up…';
+  row.innerHTML = `
+    <td style="text-align:right;padding-right:12px;color:#444;font-size:0.65rem">${rowNum}</td>
+    <td class="td-file">${file.name}</td>
+    <td class="td-mpn">${mpn || '<span style="color:#f44336">INVALID FILENAME</span>'}</td>
+    <td class="td-partnum" style="color:#555;font-size:0.65rem">—</td>
+    <td>—</td><td>—</td><td>—</td>`;
+  row.appendChild(statusEl);
+  tbody.appendChild(row);
+  // cells: 0=#  1=file  2=mpn  3=P/N  4=found  5=state  6=action  7=status
+  const cells = row.querySelectorAll('td');
+
+  const fail = (foundHtml) => {
+    cells[4].innerHTML   = foundHtml;
+    cells[5].textContent = '—';
+    cells[6].className   = 'action-skip'; cells[6].textContent = 'Skip';
+    statusEl.className   = 'status-skip'; statusEl.textContent = '—';
+    fileQueue.push({ file, mpn, csvRows: null, found: false, action: 'skip',
+                     existingBomItems: [], rowEl: row, statusEl });
+  };
+
+  if (!mpn) { fail('<span class="found-no">✗ Bad filename</span>'); return; }
+
+  let csvRows = [];
+  try {
+    const text = await file.text();
+    csvRows = parseCsv(text).filter(r => r['Partnumber'] !== SKIP_PART_NUM);
+  } catch (e) { fail('<span class="found-no">✗ Parse error</span>'); return; }
+
+  let data;
+  try { data = await aligniQueryRetry(buildLookupPart(mpn)); }
+  catch (e) { fail(`<span class="found-no">✗ ${e.message}</span>`); return; }
+
+  const nodes = data?.data?.parts?.nodes ?? [];
+  if (!nodes.length) { fail('<span class="found-no">✗ Not found</span>'); return; }
+
+  const part           = nodes[0];
+  const allRevisions   = part.revisions?.nodes ?? [];
+  const activeRevision = allRevisions.find(r => r.active) || allRevisions[allRevisions.length - 1];
+  // Re-use an existing draft (e.g. a previous failed/unreleased import) rather than
+  // stacking another new revision on top.
+  const draftRevision  = allRevisions.find(r => r.status?.toUpperCase() === 'DRAFT');
+  const workRevision   = draftRevision ?? activeRevision;
+  const isDraft        = workRevision?.status?.toUpperCase() === 'DRAFT';
+  const revName        = workRevision?.revisionName ?? '?';
+
+  // Capture existing BOM items for the diff view
+  const existingBomItems = (workRevision?.subparts?.nodes ?? []).map(sp => ({
+    id:         sp.id,
+    mpn:        sp.childPart?.manufacturerPn ?? '',
+    partNumber: sp.childPart?.partNumber ?? '',
+    quantity:   sp.quantity ?? 0,
+    unit:       sp.childPart?.unit?.name ?? ''
+  }));
+
+  const existingCount = existingBomItems.length;
+  let actionLabel, actionClass;
+
+  if (isDraft) {
+    if (existingCount > 0) {
+      actionLabel = `Replace BOM (${existingCount} items)`;
+      actionClass = 'action-replace';
+    } else {
+      actionLabel = 'New BOM';
+      actionClass = 'action-import';
+    }
+  } else {
+    actionLabel = `Create Rev ${nextRevName(allRevisions)} + Import`;
+    actionClass = 'action-newrev';
+  }
+
+  cells[3].textContent = part.partNumber ?? '—';
+  cells[4].innerHTML   = '<span class="found-yes">✓ Found</span>';
+  cells[5].className   = isDraft ? 'state-draft' : 'state-released';
+  cells[5].textContent = isDraft ? `Draft Rev ${revName}` : `Released Rev ${revName}`;
+  cells[6].className   = actionClass;
+  cells[6].textContent = actionLabel;
+  statusEl.className   = 'status-pending';
+  statusEl.textContent = 'Ready';
+
+  fileQueue.push({
+    file, mpn, csvRows, found: true, part, activeRevision: workRevision,
+    action: isDraft ? 'import' : 'newrev',
+    existingBomItems, rowEl: row, statusEl,
+    importedRevisionId: null, auditItems: []
+  });
+}
+
+function updateSummary() {
+  const ready  = fileQueue.filter(e => e.action === 'import' || e.action === 'newrev').length;
+  const newrev = fileQueue.filter(e => e.action === 'newrev').length;
+  const skip   = fileQueue.filter(e => e.action === 'skip').length;
+  document.getElementById('countReady').textContent  = ready - newrev;
+  document.getElementById('countNewRev').textContent = newrev;
+  document.getElementById('countSkip').textContent   = skip;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Import runner
+// ─────────────────────────────────────────────────────────────
+async function runImport() {
+  abortRequested = false;
+  document.getElementById('confirmBtn').disabled = true;
+  document.getElementById('progressSection').classList.remove('hidden');
+  document.getElementById('abortBtn').classList.remove('hidden');
+
+  const toProcess       = fileQueue.filter(e => e.action !== 'skip');
+  const total           = toProcess.length;
+  let done = 0, succeeded = 0, failed = 0;
+  const completedEntries = [];
+  setProgress(0, total, 0);
+
+  for (const entry of toProcess) {
+    if (abortRequested) break;
+    entry.statusEl.className   = 'status-processing';
+    entry.statusEl.textContent = '⏳ Processing…';
+    try {
+      await importOne(entry);
+      entry.statusEl.className   = 'status-done';
+      entry.statusEl.textContent = '✓ Done';
+      completedEntries.push(entry);
+      succeeded++;
+    } catch (err) {
+      entry.statusEl.className   = 'status-error';
+      entry.statusEl.textContent = `✗ ${err.message}`;
+      failed++;
+    }
+    done++;
+    setProgress(done, total, failed);
+    if (!abortRequested && done < total) await delay(IMPORT_DELAY);
+  }
+
+  document.getElementById('abortBtn').classList.add('hidden');
+
+  if (abortRequested) {
+    await revertCompleted(completedEntries);
+    return;
+  }
+
+  const skipped = fileQueue.filter(e => e.action === 'skip').length;
+  const banner  = document.getElementById('doneBanner');
+  banner.classList.remove('hidden');
+  banner.style.color = failed ? '#FF9800' : '#4CAF50';
+  banner.textContent = `Import complete — ${succeeded} succeeded, ${skipped} skipped, ${failed} failed`;
+
+  if (succeeded > 0) buildReviewSection();
+}
+
+function abortImport() {
+  abortRequested = true;
+  const btn = document.getElementById('abortBtn');
+  btn.disabled = true;
+  btn.textContent = 'Aborting…';
+}
+
+async function revertCompleted(entries) {
+  const label = document.getElementById('progressLabel');
+  if (!entries.length) {
+    label.style.color   = '#FF9800';
+    label.textContent   = 'Aborted — nothing to revert';
+    document.getElementById('confirmBtn').disabled = false;
+    return;
+  }
+  label.style.color   = '#FF9800';
+  label.textContent   = `Aborting — reverting ${entries.length} completed import(s)…`;
+
+  let reverted = 0, revertFailed = 0;
+  for (const entry of [...entries].reverse()) {
+    entry.statusEl.className   = 'status-processing';
+    entry.statusEl.textContent = '⏳ Reverting…';
+    try {
+      await revertOne(entry);
+      entry.statusEl.className   = 'status-skip';
+      entry.statusEl.textContent = '↩ Reverted';
+      entry.importedRevisionId   = null;
+      reverted++;
+    } catch (err) {
+      entry.statusEl.className   = 'status-error';
+      entry.statusEl.textContent = `✗ Revert failed: ${err.message}`;
+      revertFailed++;
+    }
+  }
+
+  label.style.color = revertFailed ? '#f44336' : '#4CAF50';
+  label.textContent = `Aborted — ${reverted} reverted${revertFailed ? `, ${revertFailed} revert failed` : ''}`;
+  document.getElementById('confirmBtn').disabled = false;
+  document.getElementById('abortBtn').disabled   = false;
+  document.getElementById('abortBtn').textContent = '✕ Abort & Revert';
+}
+
+async function revertOne(entry) {
+  if (entry.action === 'newrev') {
+    // Created a brand-new revision — delete it entirely
+    await delay(IMPORT_DELAY);
+    const r    = await aligniQueryRetry(DELETE_REVISION, { id: entry.importedRevisionId });
+    const errs = r?.data?.partRevisionDelete?.errors ?? [];
+    if (errs.length) throw new Error(errs[0]);
+  } else {
+    // Modified an existing draft — wipe what we added, restore the original BOM
+    // Step 1: fetch the current subparts to get their IDs
+    await delay(IMPORT_DELAY);
+    const data    = await aligniQueryRetry(buildLookupPart(entry.mpn));
+    const nodes   = data?.data?.parts?.nodes ?? [];
+    const allRevs = nodes[0]?.revisions?.nodes ?? [];
+    const rev     = allRevs.find(r => r.id === entry.importedRevisionId);
+    const current = rev?.subparts?.nodes ?? [];
+
+    // Step 2: delete current subparts
+    for (const sp of current) {
+      await delay(IMPORT_DELAY);
+      const r    = await aligniQueryRetry(DELETE_SUBPART, { id: sp.id });
+      const errs = r?.data?.subpartDelete?.errors ?? [];
+      if (errs.length) throw new Error(`Delete: ${errs[0]}`);
+    }
+
+    // Step 3: re-add the originals that were there before import
+    for (const orig of entry.existingBomItems) {
+      const revId = await getComponentRevId(orig.mpn);
+      await delay(IMPORT_DELAY);
+      const r    = await aligniQueryRetry(CREATE_SUBPART, {
+        input: { partRevisionId: entry.importedRevisionId,
+                 subpartPartRevisionId: revId, quantity: orig.quantity }
+      });
+      const errs = r?.data?.subpartCreate?.errors ?? [];
+      if (errs.length) throw new Error(`Restore: ${errs[0]}`);
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Rate limit tester
+// ─────────────────────────────────────────────────────────────
+async function testRateLimit() {
+  const btn    = document.getElementById('rateLimitBtn');
+  const result = document.getElementById('rateLimitResult');
+  btn.disabled = true;
+  result.style.color   = '#555';
+  result.textContent   = 'Firing rapid queries…';
+
+  const probe = `{ parts(filters: [{field: "manufacturerPn", value: {eq: "RATELIMIT-PROBE"}}]) { nodes { id } } }`;
+  let count = 0;
+  const start = Date.now();
+
+  for (let i = 0; i < 60; i++) {
+    try {
+      await aligniQuery(probe);
+      count++;
+    } catch (err) {
+      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+      result.style.color  = '#FF9800';
+      result.textContent  = `Rate limit = ${count} calls/min — hit after ${count} calls in ${elapsed}s`;
+      btn.disabled = false;
+      return;
+    }
+  }
+
+  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+  result.style.color  = '#4CAF50';
+  result.textContent  = `60 calls in ${elapsed}s — no rate limit hit`;
+  btn.disabled = false;
+}
+
+function setProgress(done, total, failed) {
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = done < total
+    ? `Processing ${done + 1} of ${total}…`
+    : `Done — ${total} processed${failed ? `, ${failed} with errors` : ''}`;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Component revision ID lookup with cache
+// ─────────────────────────────────────────────────────────────
+async function getComponentRevId(mpn) {
+  if (componentRevCache[mpn]) return componentRevCache[mpn];
+  await delay(IMPORT_DELAY);
+  const r         = await aligniQueryRetry(buildLookupComponent(mpn));
+  const compNodes = r?.data?.parts?.nodes ?? [];
+  if (!compNodes.length) throw new Error(`Component not found: ${mpn}`);
+  const compRevs      = compNodes[0].revisions?.nodes ?? [];
+  const compActiveRev = compRevs.find(rv => rv.active) || compRevs[compRevs.length - 1];
+  if (!compActiveRev?.id) throw new Error(`No active revision for component: ${mpn}`);
+  componentRevCache[mpn] = compActiveRev.id;
+  return compActiveRev.id;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  importOne — core per-file logic
+// ─────────────────────────────────────────────────────────────
+async function importOne(entry) {
+  const { csvRows, activeRevision, action } = entry;
+  let targetRevisionId;
+
+  // ── 1. Resolve target revision ───────────────────────────────
+  if (action === 'import') {
+    targetRevisionId = activeRevision.id;
+    const existingSubparts = activeRevision.subparts?.nodes ?? [];
+    for (const sp of existingSubparts) {
+      await delay(IMPORT_DELAY);
+      const r = await aligniQueryRetry(DELETE_SUBPART, { id: sp.id });
+      const errs = r?.data?.subpartDelete?.errors ?? [];
+      if (errs.length) throw new Error(`Delete subpart: ${errs[0]}`);
+    }
+  } else {
+    const newRevName = nextRevName(entry.part.revisions?.nodes ?? []);
+    const today      = new Date().toISOString().slice(0, 10);
+    await delay(IMPORT_DELAY);
+    const r = await aligniQueryRetry(CREATE_REVISION, {
+      sourceId: activeRevision.id,
+      input: { revisionName: newRevName, revisionReason: `BOM bulk import — ${today}` }
+    });
+    const errs = r?.data?.partRevisionCreate?.errors ?? [];
+    if (errs.length) throw new Error(`Create revision: ${errs[0]}`);
+    targetRevisionId = r?.data?.partRevisionCreate?.partRevision?.id;
+    if (!targetRevisionId) throw new Error('Create revision returned no ID');
+  }
+
+  // ── 2. Look up component revision IDs (cached) ───────────────
+  // O-CUT-DISC5 and similar shared parts are looked up once per batch,
+  // not once per file — avoids redundant API calls across 40 files.
+  const lineItems = [];
+  for (const row of csvRows) {
+    const compMpn = row['Manufacturer P/N'];
+    if (!compMpn) continue;
+    const revId = await getComponentRevId(compMpn);
+    lineItems.push({
+      subpartPartRevisionId: revId,
+      quantity:              parseFloat(row['Quantity']) || 0,
+      buildSequence:         parseInt(row['Build Sequence']) || null,
+    });
+  }
+  if (!lineItems.length) throw new Error('No valid line items in CSV');
+
+  // ── 3. Create subparts ────────────────────────────────────────
+  for (const item of lineItems) {
+    await delay(IMPORT_DELAY);
+    const input = {
+      partRevisionId:        targetRevisionId,
+      subpartPartRevisionId: item.subpartPartRevisionId,
+      quantity:              item.quantity,
+    };
+    if (item.buildSequence) input.buildSequence = item.buildSequence;
+    const r    = await aligniQueryRetry(CREATE_SUBPART, { input });
+    const errs = r?.data?.subpartCreate?.errors ?? [];
+    if (errs.length) throw new Error(`Create subpart: ${errs[0]}`);
+    if (!r?.data?.subpartCreate?.subpart?.id)
+      throw new Error('subpartCreate returned no ID — check Aligni');
+  }
+
+  // ── 4. Mark success — derive audit data from CSV (no extra API call) ────
+  entry.importedRevisionId = targetRevisionId;
+  entry.auditItems = csvRows.map(row => ({
+    mpn:      row['Manufacturer P/N'] ?? '',
+    quantity: parseFloat(row['Quantity']) || 0,
+    unit:     (row['Unit of Measure'] || '').toLowerCase()
+  }));
+}
+
+// Re-query Aligni after import to confirm what actually landed
+async function fetchAuditItems(mpn) {
+  try {
+    const data    = await aligniQuery(buildLookupPart(mpn));
+    const nodes   = data?.data?.parts?.nodes ?? [];
+    if (!nodes.length) return [];
+    const allRevs = nodes[0].revisions?.nodes ?? [];
+    const activeRev = allRevs.find(r => r.active) || allRevs[allRevs.length - 1];
+    return (activeRev?.subparts?.nodes ?? []).map(sp => ({
+      mpn:      sp.childPart?.manufacturerPn ?? '',
+      quantity: sp.quantity ?? 0,
+      unit:     sp.childPart?.unit?.name ?? ''
+    }));
+  } catch (e) { return []; }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Review & Release section
+// ─────────────────────────────────────────────────────────────
+function buildReviewSection() {
+  const successEntries = fileQueue.filter(e => e.importedRevisionId);
+  if (!successEntries.length) return;
+
+  const cardsEl = document.getElementById('reviewCards');
+  cardsEl.innerHTML = '';
+
+  for (const entry of successEntries) {
+    cardsEl.appendChild(buildReviewCard(entry));
+  }
+
+  document.getElementById('reviewSection').classList.remove('hidden');
+  updateReleaseTally();
+}
+
+function buildReviewCard(entry) {
+  const { mpn, part, activeRevision, csvRows, existingBomItems, auditItems } = entry;
+  const revName  = activeRevision?.revisionName ?? '?';
+  const cardId   = 'card-' + mpn.replace(/[^a-z0-9]/gi, '-');
+  const checkId  = 'chk-'  + mpn.replace(/[^a-z0-9]/gi, '-');
+
+  // Build comparison rows — one per CSV line item
+  const rows = csvRows.map(row => {
+    const compMpn  = row['Manufacturer P/N'];
+    const csvQty   = parseFloat(row['Quantity']) || 0;
+    const csvUnit  = (row['Unit of Measure'] || '').toLowerCase();
+
+    const before = existingBomItems.find(b => b.mpn === compMpn);
+    const after  = auditItems.find(a => a.mpn === compMpn);
+
+    const beforeStr = before
+      ? `${before.quantity} ${before.unit}`
+      : '<span class="diff-val empty">—</span>';
+
+    const afterStr = after
+      ? `${after.quantity} ${after.unit}`
+      : '<span class="audit-miss">✗ Missing</span>';
+
+    const qtyMatch = after && Math.abs(after.quantity - csvQty) < 0.0001;
+    let auditHtml;
+    if (!after) {
+      auditHtml = '<span class="audit-miss">✗ Missing</span>';
+    } else if (qtyMatch) {
+      auditHtml = '<span class="audit-ok">✓</span>';
+    } else {
+      auditHtml = `<span class="audit-warn">⚠ ${csvQty} ${csvUnit} expected</span>`;
+    }
+
+    const afterClass = after && !qtyMatch ? 'diff-val changed' : 'diff-val';
+
+    return `<tr>
+      <td class="diff-mpn">${compMpn}</td>
+      <td>${beforeStr}</td>
+      <td class="${afterClass}">${afterStr}</td>
+      <td>${auditHtml}</td>
+    </tr>`;
+  });
+
+  const allPass = csvRows.every(row => {
+    const compMpn = row['Manufacturer P/N'];
+    const csvQty  = parseFloat(row['Quantity']) || 0;
+    const after   = auditItems.find(a => a.mpn === compMpn);
+    return after && Math.abs(after.quantity - csvQty) < 0.0001;
+  });
+
+  const existingNote = existingBomItems.length > 0
+    ? ` · replaced ${existingBomItems.length} existing item${existingBomItems.length > 1 ? 's' : ''}`
+    : ' · new BOM';
+
+  const card = document.createElement('div');
+  card.className = 'review-card selected';
+  card.id = cardId;
+  card.innerHTML = `
+    <div class="review-card-top">
+      <div class="review-card-left">
+        <input type="checkbox" class="review-checkbox" id="${checkId}"
+               checked onchange="onCardCheck(this)">
+        <div class="review-card-info">
+          <div class="review-mpn">${mpn}</div>
+          <div class="review-meta">${part.partNumber} · Draft Rev ${revName}${existingNote}</div>
+        </div>
+      </div>
+      <div class="review-card-right">
+        <span class="audit-badge ${allPass ? 'badge-pass' : 'badge-warn'}">
+          ${allPass ? '✓ Audit Pass' : '⚠ Review'}
+        </span>
+      </div>
+    </div>
+    <table class="diff-table">
+      <thead>
+        <tr>
+          <th>Component</th>
+          <th>Before Import</th>
+          <th>Now in Aligni</th>
+          <th>Audit vs CSV</th>
+        </tr>
+      </thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>
+    <div class="review-card-status" id="${cardId}-status"></div>
+  `;
+  return card;
+}
+
+function onCardCheck(checkbox) {
+  const card = checkbox.closest('.review-card');
+  card.classList.toggle('selected', checkbox.checked);
+  updateReleaseTally();
+}
+
+function selectAllReview(checked) {
+  document.querySelectorAll('.review-checkbox').forEach(cb => {
+    cb.checked = checked;
+    cb.closest('.review-card').classList.toggle('selected', checked);
+  });
+  updateReleaseTally();
+}
+
+function updateReleaseTally() {
+  const total    = document.querySelectorAll('.review-checkbox').length;
+  const selected = document.querySelectorAll('.review-checkbox:checked').length;
+  document.getElementById('releaseTally').textContent =
+    `${selected} of ${total} selected for release`;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Release
+// ─────────────────────────────────────────────────────────────
+async function releaseSelected() {
+  const btn = document.getElementById('releaseBtn');
+  btn.disabled = true;
+
+  const toRelease = fileQueue.filter(e => {
+    if (!e.importedRevisionId) return false;
+    const checkId = 'chk-' + e.mpn.replace(/[^a-z0-9]/gi, '-');
+    const cb = document.getElementById(checkId);
+    return cb && cb.checked;
+  });
+
+  for (const entry of toRelease) {
+    const cardId   = 'card-' + entry.mpn.replace(/[^a-z0-9]/gi, '-');
+    const statusEl = document.getElementById(`${cardId}-status`);
+    statusEl.style.color = '#BFBFBF';
+    statusEl.textContent = '⏳ Releasing…';
+
+    try {
+      await delay(IMPORT_DELAY);
+      const r    = await aligniQueryRetry(RELEASE_REVISION, { id: entry.importedRevisionId });
+      const errs = r?.data?.partRevisionRelease?.errors ?? [];
+      if (errs.length) throw new Error(errs[0]);
+
+      statusEl.style.color = '#4CAF50';
+      statusEl.textContent = '✓ Released';
+      // Visually dim the card — it's done
+      document.getElementById(cardId).style.opacity = '0.6';
+    } catch (err) {
+      statusEl.style.color = '#f44336';
+      statusEl.textContent = `✗ ${err.message}`;
+      btn.disabled = false;
+    }
+  }
+
+  btn.disabled = false;
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Theme toggle
+// ─────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const next   = isDark ? 'light' : 'dark';
+  applyTheme(next);
+  localStorage.setItem('stackabl-theme', next);
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('themeToggle').textContent =
+    theme === 'light' ? 'Dark Mode' : 'Light Mode';
+}
+
+// Apply saved theme on load (default dark)
+applyTheme(localStorage.getItem('stackabl-theme') || 'dark');
+</script>
+
+</body>
+</html>

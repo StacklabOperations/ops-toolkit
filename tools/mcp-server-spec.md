@@ -1,9 +1,12 @@
-# stackabl-mcp Worker — Spec (Phase 1, Read-Only)
+# stackabl-mcp Worker — Spec
 
 **Worker URL:** `https://stackabl-mcp.operations-dae.workers.dev`  
 **MCP endpoint:** `https://stackabl-mcp.operations-dae.workers.dev/mcp`  
 **Protocol:** MCP Streamable HTTP transport, version `2025-03-26`  
-**Phase:** 1 — read-only. Seven tools. No write operations of any kind.
+**Phase:** 2 — seven read tools + three write-job tools (server version 2.0.0).
+Writes go through the `stackabl-write-executor` smart endpoint with a
+mandatory dry-run → user approval → execute flow. This Worker never writes
+to Aligni directly.
 
 ---
 
@@ -514,6 +517,46 @@ for that invocation. Not persisted across requests.
 
 **Rate limit:** Counts as one Aligni API call; subject to the same 6100ms throttle as
 all other tools.
+
+---
+
+## Write tools (Phase 2)
+
+All three are thin clients of the **stackabl-write-executor** Worker
+(`https://stackabl-write-executor.operations-dae.workers.dev`), authenticated
+with the `EXECUTOR_API_KEY` shared secret. Full job contract, op shapes, and
+error semantics: `tools/aligni-write-executor-spec.md`.
+
+**Worker-to-Worker calls MUST use the service binding** (`EXECUTOR` in
+wrangler.toml), not a public `fetch()` to the executor's workers.dev URL —
+Cloudflare blocks same-account Worker→Worker subrequests over public URLs
+(surfaces as HTTP 404; discovered live 2026-07-11). The binding routes
+privately and never touches the public internet.
+
+The two-step submit → execute split is the safety model. There is deliberately
+no "submit and execute in one call" tool, and there never should be.
+
+### 8. `submit_write_job`
+
+Takes `{ jobName, operations }`, calls `POST /jobs` on the executor. Runs a
+**dry run only** — all lookups, zero writes — and returns `jobId`, `valid`,
+`estimatedMinutes`, and `planText` (plain-English numbered plan for the user
+to review in chat). Never executes. Jobs are immutable; a changed plan means
+a new job.
+
+### 9. `execute_write_job`
+
+Takes `{ jobId }`, calls `POST /jobs/:id/execute`. Only valid on a validated,
+never-executed job — refuses invalid jobs (`INVALID_JOB`), re-execution
+(`ALREADY_EXECUTED`), and concurrent jobs (`JOB_ALREADY_RUNNING`). Execution
+is durable (Cloudflare Workflow) and continues after the conversation ends.
+
+### 10. `get_write_job_status`
+
+Takes `{ jobId }` for full detail — status, progress (op X of Y), per-op
+results including Aligni-assigned part numbers, errors, blocked ops — or no
+arguments for the recent-jobs list. Same data the read-only dashboard
+(`tools/write-jobs.html`) shows.
 
 ---
 

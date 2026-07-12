@@ -12,8 +12,17 @@ binding    = "MCP_AUTH"
 id         = "b3cfe36134064fd88c8f480a528a204b"
 preview_id = "36e3394f60d74b4ba7e37b62a8f4f1f6"
 
+# Service binding: direct private channel to the write executor.
+# REQUIRED — a Worker cannot fetch another Worker's public workers.dev URL on
+# the same account (Cloudflare blocks it; surfaces as HTTP 404). The binding
+# routes Worker-to-Worker without touching the public internet.
+[[services]]
+binding = "EXECUTOR"
+service = "stackabl-write-executor"
+
 # Secrets (set via: wrangler secret put <NAME>)
-# ALIGNI_TOKEN — same value as stackabl-aligni-proxy Worker
+# ALIGNI_TOKEN     — same value as stackabl-aligni-proxy Worker
+# EXECUTOR_API_KEY — shared secret; sent as X-Executor-Key on executor POSTs
 # Do NOT put secrets in this file.
 
 # ── Deployment notes ────────────────────────────────────────────────────────────

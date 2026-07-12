@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STACKABL — Write Jobs</title>
+<style>
+/* ── Theme Variables ── */
+:root {
+  --bg:             #000000;
+  --bg-card:        #0d0d0d;
+  --bg-hover:       #111111;
+  --border:         #1e1e1e;
+  --border-mid:     #222222;
+  --border-strong:  #333333;
+  --text-hi:        #E6E6E6;
+  --text:           #BFBFBF;
+  --text-muted:     #555555;
+  --text-ghost:     #444444;
+  --ghost-color:    #DDDDDD;
+  --ghost-border:   #222222;
+  --ghost-hover:    #555555;
+  --progress-bg:    #111111;
+  --progress-fill:  #BFBFBF;
+  --row-border:     #111111;
+  --divider:        #1a1a1a;
+}
+
+[data-theme="light"] {
+  --bg:             #f2f2f2;
+  --bg-card:        #ffffff;
+  --bg-hover:       #e8e8e8;
+  --border:         #e0e0e0;
+  --border-mid:     #cccccc;
+  --border-strong:  #bbbbbb;
+  --text-hi:        #111111;
+  --text:           #333333;
+  --text-muted:     #888888;
+  --text-ghost:     #aaaaaa;
+  --ghost-color:    #333333;
+  --ghost-border:   #cccccc;
+  --ghost-hover:    #888888;
+  --progress-bg:    #e0e0e0;
+  --progress-fill:  #333333;
+  --row-border:     #ebebeb;
+  --divider:        #e0e0e0;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: 40px 20px 80px;
+  transition: background 0.2s, color 0.2s;
+}
+
+/* ── Nav ── */
+.nav {
+  margin-bottom: 40px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.nav a {
+  font-size: 0.72rem; font-weight: 400;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text); text-decoration: none;
+}
+.nav a:hover { color: var(--text-hi); }
+
+.theme-toggle {
+  background: transparent; border: 1px solid var(--border-mid);
+  color: var(--text-muted); border-radius: 2px;
+  padding: 5px 10px; font-size: 0.58rem; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  cursor: pointer; font-family: inherit;
+  transition: border-color 0.15s, color 0.15s;
+}
+.theme-toggle:hover { border-color: var(--text-muted); color: var(--text); }
+
+.page-header { margin-bottom: 40px; }
+.page-title {
+  font-size: 1.1rem; font-weight: 800;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--text-hi); margin-bottom: 8px;
+}
+.page-subtitle { font-size: 0.75rem; letter-spacing: 0.06em; color: var(--text); }
+
+.content { max-width: 1000px; }
+
+/* ── Section label ── */
+.section-label {
+  font-size: 0.65rem; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: 12px;
+}
+
+/* ── Jobs table ── */
+.table-wrap { overflow-x: auto; margin-bottom: 28px; }
+table { width: 100%; border-collapse: collapse; font-size: 0.72rem; letter-spacing: 0.04em; }
+thead th {
+  text-align: left; font-size: 0.65rem; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-muted);
+  padding: 8px 12px 8px 0; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+tbody td {
+  padding: 12px 12px 12px 0; border-bottom: 1px solid var(--row-border);
+  color: var(--text); vertical-align: top;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr.job-row { cursor: pointer; }
+tbody tr.job-row:hover td { background: var(--bg-hover); }
+
+.job-name { font-weight: 700; color: var(--text-hi); }
+.job-id   { font-size: 0.62rem; color: var(--text-ghost); letter-spacing: 0.04em; }
+
+.st { font-weight: 700; text-transform: uppercase; font-size: 0.65rem; letter-spacing: 0.1em; }
+.st-complete  { color: #4CAF50; }
+.st-running,
+.st-queued    { color: #FF9800; }
+.st-failed,
+.st-invalid   { color: #f44336; }
+.st-validated { color: var(--text); }
+
+/* per-op statuses */
+.op-success { color: #4CAF50; font-weight: 700; }
+.op-failed  { color: #f44336; font-weight: 700; }
+.op-blocked { color: #f44336; }
+.op-skipped { color: var(--text-muted); }
+.op-pending { color: var(--text-muted); }
+.op-running { color: #FF9800; }
+
+/* ── Progress bar ── */
+.progress-bar-wrap {
+  background: var(--progress-bg); border-radius: 2px; height: 3px;
+  overflow: hidden; min-width: 80px;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--progress-fill); border-radius: 2px;
+  transition: width 0.3s ease; width: 0%;
+}
+.progress-cell { min-width: 110px; }
+.progress-text { font-size: 0.62rem; color: var(--text-muted); margin-top: 4px; letter-spacing: 0.06em; }
+
+/* ── Detail view ── */
+.detail-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 2px; padding: 24px; margin-bottom: 24px;
+}
+.detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.detail-title { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-hi); }
+.detail-meta  { font-size: 0.65rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); margin-top: 6px; }
+.op-message { font-size: 0.68rem; color: var(--text); }
+.op-error   { font-size: 0.65rem; color: #f44336; margin-top: 4px; }
+.op-lines   { font-size: 0.62rem; color: var(--text-muted); margin-top: 6px; line-height: 1.7; }
+.op-lines .lf { color: #f44336; }
+.failure-banner {
+  border: 1px solid #f44336; color: #f44336; border-radius: 2px;
+  padding: 12px 16px; font-size: 0.68rem; margin-bottom: 16px; letter-spacing: 0.04em;
+}
+.empty-note { font-size: 0.72rem; color: var(--text-muted); letter-spacing: 0.06em; padding: 24px 0; }
+
+.btn-ghost {
+  background: transparent; color: var(--ghost-color); border: 1px solid var(--ghost-border);
+  border-radius: 2px; padding: 8px 16px; font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  cursor: pointer; font-family: inherit; transition: border-color 0.15s;
+}
+.btn-ghost:hover { border-color: var(--ghost-hover); }
+
+.refresh-note { font-size: 0.6rem; color: var(--text-ghost); letter-spacing: 0.1em; text-transform: uppercase; }
+
+/* ── API Activity Bar ── */
+#apiBar {
+  position: fixed; top: 0; left: 0; right: 0; height: 2px;
+  z-index: 9999; pointer-events: none;
+  background: linear-gradient(90deg,
+    transparent 0%, var(--progress-fill) 40%, var(--text-hi) 50%, var(--progress-fill) 60%, transparent 100%);
+  background-size: 300% 100%;
+  opacity: 0; transition: opacity 0.15s;
+  animation: apiBarSweep 1.2s linear infinite;
+}
+#apiBar.active { opacity: 1; }
+@keyframes apiBarSweep {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div id="apiBar"></div>
+<div class="content">
+
+  <div class="nav">
+    <a href="../index.html">← Operations Toolkit</a>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()">Light Mode</button>
+  </div>
+
+  <div class="page-header">
+    <div class="page-title">Write Jobs</div>
+    <div class="page-subtitle">Aligni write-executor job status and history — read-only. Jobs are submitted and executed from chat.</div>
+  </div>
+
+  <!-- Jobs list -->
+  <div id="listView">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="section-label" style="margin-bottom:0">Recent Jobs</div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <span class="refresh-note" id="refreshNote"></span>
+        <button class="btn-ghost" onclick="loadJobs(true)">Refresh</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>Status</th>
+            <th>Submitted</th>
+            <th class="progress-cell">Progress</th>
+            <th>Results</th>
+          </tr>
+        </thead>
+        <tbody id="jobsTableBody"></tbody>
+      </table>
+      <div class="empty-note hidden" id="emptyNote">No jobs yet. Jobs are created from chat via the Stacklab Operations MCP tools.</div>
+    </div>
+  </div>
+
+  <!-- Job detail -->
+  <div id="detailView" class="hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div class="section-label" style="margin-bottom:0">Job Detail</div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <span class="refresh-note" id="detailRefreshNote"></span>
+        <button class="btn-ghost" onclick="showList()">← All Jobs</button>
+      </div>
+    </div>
+    <div id="detailBody"></div>
+  </div>
+
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+//  Constants — this page talks ONLY to the write executor's
+//  read endpoints. It makes zero Aligni API calls and offers
+//  no way to submit or execute anything.
+// ─────────────────────────────────────────────────────────────
+const EXECUTOR_URL = 'https://stackabl-write-executor.operations-dae.workers.dev';
+const LIST_REFRESH_MS   = 10000; // while any job is queued/running
+const DETAIL_REFRESH_MS = 5000;  // while the open job is queued/running
+
+// ─────────────────────────────────────────────────────────────
+//  API helper + activity bar
+// ─────────────────────────────────────────────────────────────
+let _apiInflight = 0;
+function _apiActive(on) {
+  _apiInflight = Math.max(0, _apiInflight + (on ? 1 : -1));
+  document.getElementById('apiBar').classList.toggle('active', _apiInflight > 0);
+}
+
+async function apiGet(path) {
+  _apiActive(true);
+  try {
+    const res = await fetch(EXECUTOR_URL + path);
+    return await res.json();
+  } finally {
+    _apiActive(false);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────────────────────
+let currentJobId = null;
+let listTimer = null, detailTimer = null;
+
+const fmtTime = (ts) => ts ? new Date(ts).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+const escHtml = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+const ACTIVE_STATUSES = ['queued', 'running'];
+
+// ─────────────────────────────────────────────────────────────
+//  Jobs list
+// ─────────────────────────────────────────────────────────────
+async function loadJobs(manual = false) {
+  let data;
+  try { data = await apiGet('/jobs'); }
+  catch (e) {
+    document.getElementById('refreshNote').textContent = 'offline — retrying';
+    scheduleListRefresh(true);
+    return;
+  }
+  const jobs = data.jobs ?? [];
+  const tbody = document.getElementById('jobsTableBody');
+  document.getElementById('emptyNote').classList.toggle('hidden', jobs.length > 0);
+
+  tbody.innerHTML = jobs.map((j) => {
+    const pct = j.progress?.total ? Math.round((j.progress.done / j.progress.total) * 100) : 0;
+    const oc = j.opCounts || {};
+    const bits = [];
+    if (oc.success) bits.push(`<span class="op-success">${oc.success} ok</span>`);
+    if (oc.failed)  bits.push(`<span class="op-failed">${oc.failed} failed</span>`);
+    if (oc.blocked) bits.push(`<span class="op-blocked">${oc.blocked} blocked</span>`);
+    if (oc.skipped) bits.push(`<span class="op-skipped">${oc.skipped} skipped</span>`);
+    return `<tr class="job-row" onclick="openJob('${escHtml(j.id)}')">
+      <td><div class="job-name">${escHtml(j.jobName)}</div><div class="job-id">${escHtml(j.id)}</div></td>
+      <td><span class="st st-${escHtml(j.status)}">${escHtml(j.status)}</span></td>
+      <td>${fmtTime(j.submittedAt)}</td>
+      <td class="progress-cell">
+        <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+        <div class="progress-text">${j.progress?.done ?? 0} of ${j.progress?.total ?? 0} ops</div>
+      </td>
+      <td>${bits.join(' · ') || '<span class="op-pending">—</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  const anyActive = jobs.some((j) => ACTIVE_STATUSES.includes(j.status));
+  document.getElementById('refreshNote').textContent = anyActive
+    ? 'auto-refreshing — job running' : `updated ${new Date().toLocaleTimeString()}`;
+  scheduleListRefresh(anyActive);
+}
+
+function scheduleListRefresh(active) {
+  clearTimeout(listTimer);
+  if (active && !currentJobId) listTimer = setTimeout(() => loadJobs(), LIST_REFRESH_MS);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Job detail
+// ─────────────────────────────────────────────────────────────
+async function openJob(id) {
+  currentJobId = id;
+  clearTimeout(listTimer);
+  document.getElementById('listView').classList.add('hidden');
+  document.getElementById('detailView').classList.remove('hidden');
+  document.getElementById('detailBody').innerHTML = '<div class="empty-note">Loading…</div>';
+  await loadDetail();
+}
+
+function showList() {
+  currentJobId = null;
+  clearTimeout(detailTimer);
+  document.getElementById('detailView').classList.add('hidden');
+  document.getElementById('listView').classList.remove('hidden');
+  loadJobs();
+}
+
+async function loadDetail() {
+  if (!currentJobId) return;
+  let j;
+  try { j = await apiGet('/jobs/' + encodeURIComponent(currentJobId)); }
+  catch (e) {
+    document.getElementById('detailRefreshNote').textContent = 'offline — retrying';
+    scheduleDetailRefresh(true);
+    return;
+  }
+  if (j.error) {
+    document.getElementById('detailBody').innerHTML = `<div class="failure-banner">${escHtml(j.error.message)}</div>`;
+    return;
+  }
+
+  const pct = j.progress?.total ? Math.round((j.progress.done / j.progress.total) * 100) : 0;
+  const rows = (j.results ?? []).map((r, i) => {
+    const lines = (r.lines ?? []).map((l) =>
+      `<span class="${l.status === 'failed' ? 'lf' : ''}">${escHtml(l.action === 'remove' ? 'removed' : l.status === 'skipped' ? 'kept' : 'added')} ${escHtml(l.manufacturerPn)}${l.quantity != null ? ' ×' + escHtml(l.quantity) : ''}${l.status === 'failed' ? ' — ' + escHtml(l.error?.message ?? 'failed') : ''}</span>`
+    ).join('<br>');
+    return `<tr>
+      <td style="text-align:right;padding-right:12px;color:var(--text-ghost);font-size:0.65rem">${i + 1}</td>
+      <td style="white-space:nowrap">${escHtml(r.op)}</td>
+      <td class="job-name" style="white-space:nowrap">${escHtml(r.target)}${r.partNumber ? `<div class="job-id">P/N ${escHtml(r.partNumber)}</div>` : ''}</td>
+      <td><span class="st op-${escHtml(r.status)}">${escHtml(r.status)}</span></td>
+      <td>
+        <div class="op-message">${escHtml(r.message ?? '—')}</div>
+        ${r.error ? `<div class="op-error">${escHtml(r.error.code)}: ${escHtml(r.error.message)}</div>` : ''}
+        ${lines ? `<div class="op-lines">${lines}</div>` : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('detailBody').innerHTML = `
+    <div class="detail-card">
+      <div class="detail-head">
+        <div>
+          <div class="detail-title">${escHtml(j.jobName)}</div>
+          <div class="detail-meta">${escHtml(j.id)} · submitted ${fmtTime(j.submittedAt)}${j.startedAt ? ' · started ' + fmtTime(j.startedAt) : ''}${j.finishedAt ? ' · finished ' + fmtTime(j.finishedAt) : ''}</div>
+        </div>
+        <span class="st st-${escHtml(j.status)}" style="font-size:0.8rem">${escHtml(j.status)}</span>
+      </div>
+      ${j.failure ? `<div class="failure-banner">${escHtml(j.failure.code)}: ${escHtml(j.failure.message)}</div>` : ''}
+      <div class="progress-bar-wrap" style="margin-bottom:6px"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+      <div class="progress-text">${j.progress?.done ?? 0} of ${j.progress?.total ?? 0} operations</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:32px;text-align:right;padding-right:12px">#</th>
+            <th>Op</th>
+            <th>Part</th>
+            <th>Status</th>
+            <th>Result</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  const active = ACTIVE_STATUSES.includes(j.status);
+  document.getElementById('detailRefreshNote').textContent = active
+    ? 'auto-refreshing — job running' : `updated ${new Date().toLocaleTimeString()}`;
+  scheduleDetailRefresh(active);
+}
+
+function scheduleDetailRefresh(active) {
+  clearTimeout(detailTimer);
+  if (active && currentJobId) detailTimer = setTimeout(() => loadDetail(), DETAIL_REFRESH_MS);
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Theme toggle
+// ─────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+  const next = isDark ? 'light' : 'dark';
+  applyTheme(next);
+  localStorage.setItem('stackabl-theme', next);
+}
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('themeToggle').textContent =
+    theme === 'light' ? 'Dark Mode' : 'Light Mode';
+}
+
+applyTheme(localStorage.getItem('stackabl-theme') || 'dark');
+loadJobs();
+</script>
+
+</body>
+</html>

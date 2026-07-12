@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "toolkit-static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8977"],
+      "port": 8977
+    }
+  ]
+}

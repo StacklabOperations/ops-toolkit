@@ -19,7 +19,11 @@
 - Vendor/supplier write capabilities as MCP tools — let emerge from observed Phase 1 usage
 
 ## Refactors
-- Endpoint-ify the BOM importer's core operation (currently UI-coupled)
+- ~~Endpoint-ify the BOM importer's core operation (currently UI-coupled)~~
+  **Closed 2026-07-11 — superseded, not refactored.** The browser tool was
+  retired and replaced by the `stackabl-write-executor` Worker (durable
+  server-side job executor) + MCP write tools + read-only `write-jobs.html`
+  dashboard. See tools/aligni-write-executor-spec.md.
 - Endpoint-ify the lead time calculator
 - Endpoint-ify the safety stock calculator
 - Pattern rule: every new tool is built endpoint-first; existing

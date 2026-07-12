@@ -303,7 +303,7 @@ wrangler deploy
 Secrets: `ALIGNI_TOKEN` (same value as `stackabl-aligni-proxy`).
 KV namespace `MCP_AUTH` must be created and IDs filled in `wrangler.toml` before first deploy.
 
-### Phase 1 tools (read-only)
+### Read tools (Phase 1)
 | Tool | What it does |
 |------|-------------|
 | `search_parts` | Substring search across MPN, revision description, revision comment |
@@ -314,6 +314,17 @@ KV namespace `MCP_AUTH` must be created and IDs filled in `wrangler.toml` before
 | `search_manufacturers` | Manufacturer name search |
 | `aligni_introspect` | Schema inspection: `describe_type` (type fields/inputs/enums) and `find_in_schema` (substring search across types, queries, mutations). Development-time tool — does not fetch live data. |
 
+### Write tools (Phase 2 — via stackabl-write-executor)
+| Tool | What it does |
+|------|-------------|
+| `submit_write_job` | Submit a write job → dry run only (no writes), returns jobId + plain-English plan |
+| `execute_write_job` | Execute a validated job after user approves the plan; durable, unattended |
+| `get_write_job_status` | Job status/progress/per-op results (or recent jobs list with no args) |
+
+The two-step submit → execute split is the safety model — there is deliberately
+no combined submit-and-execute tool. Secrets: `EXECUTOR_API_KEY` (shared with
+stackabl-write-executor; gates the executor's POST endpoints).
+
 ---
 
 ## Tools Built So Far
@@ -321,17 +332,21 @@ KV namespace `MCP_AUTH` must be created and IDs filled in `wrangler.toml` before
 | Tool | File | What it does |
 |------|------|-------------|
 | Felt Inventory Dashboard | tools/felt-inventory.html | Live felt inventory with available sqft and linear inch calculations by colour |
-| BOM Importer | tools/bom-importer.html | Bulk import BOM CSVs to Aligni via drag and drop with dry-run preview and release workflow |
-| MCP Server | workers/stackabl-mcp/index.js | Phase 1 read-only MCP server: 7 Aligni tools for Claude.ai |
+| Write Executor | workers/stackabl-write-executor/index.js | Server-side Aligni write jobs (create parts, BOMs, releases): dry-run plan → explicit execute → unattended durable execution via Cloudflare Workflow. Replaced the browser BOM importer 2026-07-11 — spec: tools/aligni-write-executor-spec.md |
+| Write Jobs Dashboard | tools/write-jobs.html | Read-only status/history for write-executor jobs; submits nothing |
+| MCP Server | workers/stackabl-mcp/index.js | 7 read tools + 3 write-job tools for Claude.ai (writes delegated to the write executor) |
 
 ---
 
 ## Open Issues
 
 - Aligni rate limit stuck at 10 req/min — support ticket open to activate 
-  30/min plan entitlement. Once resolved, change IMPORT_DELAY in 
-  tools/bom-importer.html line ~407 from 6100 to 2100.
-- Full 37-file BOM batch not yet tested end-to-end — pending rate limit fix.
+  30/min plan entitlement. Once resolved, change RATE_DELAY_MS from 6100 to 
+  2100 in workers/stackabl-write-executor/index.js AND 
+  workers/stackabl-mcp/index.js (the only two places the constant exists — 
+  the old IMPORT_DELAY died with tools/bom-importer.html).
+- Full 37-assembly BOM batch not yet executed end-to-end through the write 
+  executor — works at small scale; large batches just slow at 10 req/min.
 
 ---
 

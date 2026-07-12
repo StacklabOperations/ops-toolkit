@@ -9,7 +9,11 @@ const RATE_DELAY_MS = 6100;          // 10 req/min limit; drop to 2100 when Alig
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5-minute in-memory cache for slow-changing lists
 const ANTHROPIC_CIDR = '160.79.104.0/21';
 const MCP_PROTOCOL_VERSION = '2025-03-26';
-const SERVER_VERSION = '1.0.0';
+const SERVER_VERSION = '2.0.0'; // Phase 2: first write tools (job executor)
+
+// Write jobs are delegated to the stackabl-write-executor smart endpoint.
+// This Worker is a thin client: it never talks to Aligni for writes itself.
+const EXECUTOR_URL = 'https://stackabl-write-executor.operations-dae.workers.dev';
 // Hardcoded client_id: DCR registrations always return this value.
 // Single-user — we don't actually issue distinct clients.
 const CLIENT_ID = 'stackabl-ops-agent-1';
@@ -506,6 +510,65 @@ async function toolAligniIntrospect(args, token) {
   throw { code: 'INVALID_INPUT', message: `Unknown op: "${op}". Use "describe_type" or "find_in_schema"` };
 }
 
+// ── Write-executor tools (thin clients of stackabl-write-executor) ────────────
+async function callExecutor(env, method, path, body) {
+  // Worker-to-Worker MUST go through the service binding — fetching the
+  // executor's public workers.dev URL from this Worker is blocked by
+  // Cloudflare (same-account subrequest) and returns 404. The URL below is
+  // only used to form a syntactically valid Request; routing is the binding's.
+  const req = new Request(EXECUTOR_URL + path, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Executor-Key': env.EXECUTOR_API_KEY || '',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const resp = await env.EXECUTOR.fetch(req);
+  let data = null;
+  try { data = await resp.json(); } catch { /* fall through */ }
+  if (!resp.ok) {
+    throw {
+      code: data?.error?.code || 'EXECUTOR_ERROR',
+      message: data?.error?.message || `Write executor returned HTTP ${resp.status}`,
+      ...(data?.error?.details ? { details: data.error.details } : {}),
+    };
+  }
+  return data;
+}
+
+async function toolSubmitWriteJob(args, env) {
+  const { jobName, operations } = args || {};
+  if (!jobName || !Array.isArray(operations)) {
+    throw { code: 'MISSING_INPUT', message: 'jobName (string) and operations (array) are required.' };
+  }
+  // Dry run only — this NEVER writes to Aligni and NEVER auto-executes.
+  const res = await callExecutor(env, 'POST', '/jobs', { jobName, operations });
+  return {
+    jobId: res.jobId,
+    valid: res.valid,
+    status: res.status,
+    estimatedMinutes: res.estimatedMinutes,
+    planText: res.planText,
+    nextStep: res.valid
+      ? 'Show the plan to the user. Only after they approve, call execute_write_job with this jobId.'
+      : 'This job cannot be executed. Fix the problems and submit a new job.',
+  };
+}
+
+async function toolExecuteWriteJob(args, env) {
+  const { jobId } = args || {};
+  if (!jobId) throw { code: 'MISSING_INPUT', message: 'jobId is required.' };
+  // The executor refuses jobs that failed their dry run or were already executed.
+  return callExecutor(env, 'POST', `/jobs/${encodeURIComponent(jobId)}/execute`);
+}
+
+async function toolGetWriteJobStatus(args, env) {
+  const { jobId } = args || {};
+  if (jobId) return callExecutor(env, 'GET', `/jobs/${encodeURIComponent(jobId)}`);
+  return callExecutor(env, 'GET', '/jobs');
+}
+
 // ── MCP tool registry ──────────────────────────────────────────────────────────
 const TOOLS = [
   {
@@ -589,6 +652,43 @@ const TOOLS = [
       required: ['op'],
     },
   },
+  {
+    name: 'submit_write_job',
+    description: 'Submit a write job (createPart / ensureDraft / addSubparts / releaseRevision operations) to the Aligni write executor. Runs a DRY RUN only: all lookups, zero writes. Returns a jobId and a plain-English plan for the user to review. NEVER executes — execution requires a separate explicit execute_write_job call after the user approves the plan. Jobs are immutable once submitted; a changed plan means a new job. Parts are referenced by manufacturerPn everywhere. createPart requires unit, partType, and manufacturer names exactly as they appear in Aligni (unit is permanent — an unknown unit hard-fails). addSubparts lines may reference parts created earlier in the same job.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobName: { type: 'string', description: 'Short human label for this job, e.g. "GP-A-OPEN family BOMs"' },
+        operations: {
+          type: 'array',
+          description: 'Ordered list of operations. Each item: {op: "createPart", manufacturerPn, partType, unit, manufacturer, description?, comment?, revisionName?, customParameters?: [{name, value}], manufacturedHere?} | {op: "ensureDraft", manufacturerPn, revisionReason?, copyExistingBom?} | {op: "addSubparts", manufacturerPn, replaceExisting?, lines: [{manufacturerPn, quantity, buildSequence?, designator?, comment?}]} | {op: "releaseRevision", manufacturerPn}',
+          items: { type: 'object' },
+        },
+      },
+      required: ['jobName', 'operations'],
+    },
+  },
+  {
+    name: 'execute_write_job',
+    description: 'Begin unattended execution of a previously submitted, validated write job. Only call this AFTER the user has reviewed and approved the dry-run plan from submit_write_job. Refuses jobs that failed validation, were already executed, or while another job is running. Execution is rate-limited and durable — it continues even if this conversation ends. Track progress with get_write_job_status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: { type: 'string', description: 'The jobId returned by submit_write_job' },
+      },
+      required: ['jobId'],
+    },
+  },
+  {
+    name: 'get_write_job_status',
+    description: 'Get write-job status. With a jobId: full detail — status (validated/invalid/queued/running/complete/failed), progress (op X of Y), per-operation results including Aligni-assigned part numbers, errors, and blocked operations. Without arguments: recent jobs list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: { type: 'string', description: 'Job ID; omit for the recent jobs list' },
+      },
+    },
+  },
 ];
 
 // ── MCP protocol handler ───────────────────────────────────────────────────────
@@ -636,7 +736,7 @@ async function handleMcp(request, env) {
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: { name: 'stackabl-mcp', version: SERVER_VERSION },
-        instructions: 'Stacklab Operations read-only Aligni connector. Phase 1: search parts, get part details and BOM, get live inventory, search vendors, get vendor with contacts, search manufacturers. No write operations.',
+        instructions: 'Stacklab Operations Aligni connector. Reads: search parts, get part details and BOM, get live inventory, search vendors, get vendor with contacts, search manufacturers, introspect schema. Writes (Phase 2): batch write jobs via submit_write_job → user reviews the dry-run plan → execute_write_job. The two-step split is the safety model — never execute without explicit user approval of the returned plan, and never combine both steps.',
       });
 
     case 'notifications/initialized':
@@ -662,6 +762,9 @@ async function handleMcp(request, env) {
           case 'get_vendor':           result = await toolGetVendor(args, tok);          break;
           case 'search_manufacturers': result = await toolSearchManufacturers(args, tok); break;
           case 'aligni_introspect':    result = await toolAligniIntrospect(args, tok);   break;
+          case 'submit_write_job':     result = await toolSubmitWriteJob(args, env);      break;
+          case 'execute_write_job':    result = await toolExecuteWriteJob(args, env);     break;
+          case 'get_write_job_status': result = await toolGetWriteJobStatus(args, env);   break;
         }
         // If a rate-limit retry happened during this call, surface it so Claude mentions it
         if (_rateLimitNote) result = { _notice: _rateLimitNote, ...result };
@@ -861,7 +964,7 @@ button[type="submit"]:hover { background: #E6E6E6; }
   <div class="brand">Stacklab Operations</div>
   <div class="title">Authorize MCP Access</div>
   <div class="desc">
-    Claude is requesting read-only access to your Aligni PLM data
+    Claude is requesting access to your Aligni PLM data
     via the Stacklab Operations MCP server.
   </div>
   <div class="scope-list">
@@ -869,13 +972,14 @@ button[type="submit"]:hover { background: #E6E6E6; }
     <div class="scope-item"><div class="dot"></div><span>Read live inventory quantities by location</span></div>
     <div class="scope-item"><div class="dot"></div><span>Search vendors and retrieve vendor contacts</span></div>
     <div class="scope-item"><div class="dot"></div><span>Search manufacturers</span></div>
+    <div class="scope-item"><div class="dot"></div><span>Submit batch write jobs (parts and BOMs) — every job is dry-run first and only executes after you approve its plan in chat</span></div>
   </div>
   <hr>
   <form method="POST" action="${htmlEsc(formAction)}">
     <input type="hidden" name="action" value="authorize">
     <button type="submit">Authorize Stacklab Operations</button>
   </form>
-  <div class="note">Read-only &nbsp;·&nbsp; No writes will be made to Aligni</div>
+  <div class="note">Writes require a reviewed dry-run plan &nbsp;·&nbsp; Two-step approval in chat</div>
 </div>
 </body>
 </html>`;

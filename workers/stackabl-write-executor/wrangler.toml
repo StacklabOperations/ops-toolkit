@@ -1,0 +1,22 @@
+name = "stackabl-write-executor"
+main = "index.js"
+compatibility_date = "2026-06-01"
+
+# Durable execution primitive: Cloudflare Workflows.
+# Each job runs as one workflow instance; every operation is a checkpointed
+# step, so execution survives isolate recycling and runs unattended.
+[[workflows]]
+name = "stackabl-write-job"
+binding = "JOB_WORKFLOW"
+class_name = "WriteJobWorkflow"
+
+# Job storage: records under job:<id>, listing index under jobs:index.
+# id filled in at first deploy (wrangler kv namespace create WRITE_JOBS).
+[[kv_namespaces]]
+binding = "WRITE_JOBS"
+id = "2700d1e109134816a189dba4da9f3f4d"
+
+# Secrets (set via wrangler secret put):
+#   ALIGNI_TOKEN     — same value as stackabl-aligni-proxy / stackabl-mcp
+#   EXECUTOR_API_KEY — shared secret; stackabl-mcp sends it on POST requests.
+#                      GET endpoints are public (read-only dashboard).

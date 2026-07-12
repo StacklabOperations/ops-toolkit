@@ -157,6 +157,11 @@ Schema introspected 2026-04-29. All confirmed against live schema.
 ### Custom parameters on Felt parts
 - Thickness (mm): "3" or "4.8" (4.8mm marketed as 5mm)
 - Colour/Sheen: display name (e.g. "Charcoal", "Ivory")
+- These are the display names used when READING. WRITING them (via the write
+  executor) is different: params are set by `apiName` (Collection=COL,
+  Thickness (mm)=TH, Material=MAT, Colour/Sheen=FIN2, …), live at the PART
+  level not the revision, and validity is constrained by part type. See
+  tools/aligni-write-executor-spec.md → "Custom parameters — hard-won details".
 
 ### Disc geometry (for inventory calculations)
 - 5in disc: 0.252 sqft per disc

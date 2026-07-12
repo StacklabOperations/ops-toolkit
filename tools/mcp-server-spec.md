@@ -136,7 +136,7 @@ Returns `405 Method Not Allowed`. SSE server-push not implemented.
 ### MCP methods supported
 - `initialize` → returns capabilities
 - `notifications/initialized` → 202 Accepted
-- `tools/list` → returns all 7 tools
+- `tools/list` → returns all 10 tools (7 read + 3 write-job)
 - `tools/call` → dispatches to tool implementation
 - `ping` → returns `{}`
 
@@ -612,7 +612,9 @@ Long-term fix if collisions become real: centralized Durable Object rate limiter
 1. `wrangler kv:namespace create MCP_AUTH` — create KV namespace
 2. Fill `id` and `preview_id` in `wrangler.toml`
 3. `wrangler secret put ALIGNI_TOKEN` — same value as `stackabl-aligni-proxy`
-4. `wrangler deploy`
-5. Add to Claude.ai: Settings → Integrations → Add custom integration → `https://stackabl-mcp.operations-dae.workers.dev/mcp`
-6. Complete OAuth consent flow
-7. Test all 6 tools with live data
+4. `wrangler secret put EXECUTOR_API_KEY` — same value as `stackabl-write-executor` (write tools)
+5. Confirm the `[[services]]` binding to `stackabl-write-executor` is present in `wrangler.toml`
+6. `wrangler deploy`
+7. Add to Claude.ai: Settings → Integrations → Add custom integration → `https://stackabl-mcp.operations-dae.workers.dev/mcp`
+8. Complete OAuth consent flow
+9. Test all 10 tools with live data (7 read + 3 write-job)

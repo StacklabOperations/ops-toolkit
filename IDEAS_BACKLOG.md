@@ -1,11 +1,18 @@
 # Ops Toolkit — Ideas Backlog
 
 ## Active
-- stackabl-mcp deployed; observing Phase 1 usage patterns before designing Phase 2 writes
+- stackabl-write-executor live (Phase 2): durable write jobs + 3 MCP write tools +
+  read-only write-jobs dashboard. Observing real bulk part/BOM job usage before
+  promoting any composite workflows.
 
 ## Next up
-- stackabl-mcp Phase 2: write tools — design from observed Phase 1 atomic-call patterns,
-  not speculatively. What gets repeatedly orchestrated in Phase 1 becomes a Phase 2 tool.
+- get_part reads custom parameters off the revision, so part-level (non-revisioned)
+  params show as empty. One-line fix when get_part is next touched: also read
+  Part.customParameters. (Discovered during the write-executor build, 2026-07-11.)
+- Dry-run pre-validation of per-type param validity and category-only part types:
+  fetch the per-type parameter set so a job with a param invalid for its part type
+  (e.g. Finish Type on Sheet-Cut Profile) or a category-only type (e.g. Assembly)
+  fails at dry run instead of surfacing as a clean failed-op at execution. Tighten later.
 
 ## Ideas
 - **Extract stackabl-auth Worker:** when a second MCP consumer (or any second Worker

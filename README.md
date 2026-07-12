@@ -1,38 +1,60 @@
 # Stacklab Operations Toolkit
 
-Internal operations tools for Stacklab's production, inventory, and 
-integration workflows. Built on GitHub Pages, powered by the Stackabl 
-Aligni API proxy.
+Internal operations tools for Stacklab's production, inventory, and
+integration workflows. Browser tools are static pages on GitHub Pages;
+Aligni access runs through Cloudflare Workers that keep the API token
+server-side.
 
 **Live site:** [your GitHub Pages URL]
 
----
-
-## Tools
-
-| Tool | File | What it does |
-|------|------|-------------|
-| Felt Inventory Dashboard | `tools/felt-dashboard.html` | Live felt inventory with available sqft and linear inch calculations by colour |
-| BOM Importer | `tools/bom-importer.html` | Bulk import BOM CSVs to Aligni via drag and drop |
+> **Canonical reference:** [`DEV_ENVIRONMENT.md`](DEV_ENVIRONMENT.md) is the
+> single source of truth for the full stack, the current tool inventory, the
+> Aligni data model and API quirks, and the build/deploy workflow. This README
+> is just an orientation map — when in doubt, DEV_ENVIRONMENT.md wins.
 
 ---
 
-## Project Structure
+## What's here
+
+Three peer interfaces sit on top of a shared capability layer (see the
+architecture note in [`CLAUDE.md`](CLAUDE.md)):
+
+- **Browser tools** (`tools/*.html`) — human-facing static pages.
+- **MCP server** (`workers/stackabl-mcp/`) — agent-facing Aligni tools for
+  Claude.ai (read tools + write-job tools).
+- **Write executor** (`workers/stackabl-write-executor/`) — durable
+  server-side Aligni write jobs (create parts, BOMs, releases).
+
+For the live list of every tool and what it does, see the **Tools** tables in
+[`DEV_ENVIRONMENT.md`](DEV_ENVIRONMENT.md). Per-tool specs live alongside each
+tool as `tools/[name]-spec.md`.
+
+---
+
+## Project structure
 
 ```
 ops-toolkit/
 ├── index.html                        # Landing page / tool directory
 ├── CLAUDE.md                         # Claude Code instructions (auto-loaded)
-├── DEV_ENVIRONMENT.md                # Full dev environment reference
+├── DEV_ENVIRONMENT.md                # Canonical dev/stack reference
 ├── STACKABL_APPS_STYLE_GUIDE.md      # UI design system
-├── README.md                         # This file
+├── IDEAS_BACKLOG.md                  # Backlog, refactors, discovered follow-ups
+├── README.md                         # This orientation map
 ├── worker/
-│   └── worker.js                     # Cloudflare Worker source (deployed separately)
+│   └── worker.js                     # stackabl-aligni-proxy (dumb GraphQL proxy)
+├── workers/
+│   ├── stackabl-mcp/                 # MCP server Worker (read + write-job tools)
+│   └── stackabl-write-executor/      # Durable write-job executor Worker
 ├── tools/
-│   ├── felt-dashboard.html
-│   ├── felt-dashboard-spec.md
-│   ├── bom-importer.html
-│   └── bom-importer-spec.md
+│   ├── felt-inventory.html           # + felt inventory dashboard
+│   ├── lead-time-calculator.html
+│   ├── safety-stock-calculator.html
+│   ├── write-jobs.html               # read-only write-job status/history
+│   ├── aligni-write-executor-spec.md
+│   ├── aligni-introspect-spec.md
+│   ├── mcp-server-spec.md
+│   └── bom-importer-spec.md          # tombstone → superseded by write executor
 └── assets/
 ```
 
@@ -40,46 +62,42 @@ ops-toolkit/
 
 ## Architecture
 
-All tools are static HTML files hosted on GitHub Pages. API calls go 
-through a Cloudflare Worker that injects the Aligni API token server-side.
+Browser tools are static HTML on GitHub Pages. Reads for the browser tools go
+through the dumb proxy Worker; multi-step Aligni writes go through the
+write-executor smart endpoint. The Aligni API token never touches any
+frontend — it lives as an encrypted secret in the Workers.
 
 ```
-Browser (GitHub Pages tool)
-        ↓
-Cloudflare Worker (stackabl-aligni-proxy.operations-dae.workers.dev)
-        ↓
-Aligni GraphQL API (stacklab.aligni.com/api/v3/graphql)
+Browser tool ─┐
+              ├─→ stackabl-aligni-proxy ──→ Aligni GraphQL API
+Claude.ai ────┤        (dumb proxy)
+  (MCP)       └─→ stackabl-mcp ──(service binding)──→ stackabl-write-executor ──→ Aligni
+                  (read tools + write-job tools)         (durable write jobs)
 ```
 
-The API token never touches the frontend. It lives as an encrypted 
-secret in the Cloudflare Worker environment.
+Details, URLs, and the endpoint-first design rules are in
+[`DEV_ENVIRONMENT.md`](DEV_ENVIRONMENT.md) and [`CLAUDE.md`](CLAUDE.md).
 
 ---
 
-## Adding a New Tool
+## Adding a new tool
 
-1. Read `DEV_ENVIRONMENT.md` for full context
-2. Read `STACKABL_APPS_STYLE_GUIDE.md` before writing any UI
-3. Create `tools/[tool-name].html` — single self-contained HTML file
-4. Add a link card to `index.html`
-5. Save a spec at `tools/[tool-name]-spec.md`
-
-All API calls POST to:
-`https://stackabl-aligni-proxy.operations-dae.workers.dev`
+1. Read [`DEV_ENVIRONMENT.md`](DEV_ENVIRONMENT.md) for full context.
+2. Read [`STACKABL_APPS_STYLE_GUIDE.md`](STACKABL_APPS_STYLE_GUIDE.md) before writing any UI.
+3. Follow the endpoint-first pattern (logic in a Worker capability, thin UI).
+4. Add a link card to `index.html` and a spec at `tools/[name]-spec.md`.
 
 ---
 
 ## Deploying
 
-Push to `main` branch → GitHub Pages deploys automatically. No build 
-step required.
+- **Browser tools:** push to `main` → GitHub Pages deploys automatically. No build step.
+- **Workers:** `cd workers/<name> && wrangler deploy` (see DEV_ENVIRONMENT.md).
 
 ---
 
-## Development Workflow
+## Development workflow
 
-This toolkit is developed using Claude Code with persistent context 
-managed through `CLAUDE.md` and `DEV_ENVIRONMENT.md`.
-
-See `DEV_ENVIRONMENT.md` for the full development workflow including 
-the DEVSUM handoff process.
+Developed with Claude Code using persistent context in `CLAUDE.md` and
+`DEV_ENVIRONMENT.md`. End each session with **DEVSUM** (defined in `CLAUDE.md`)
+for a structured handoff. See `DEV_ENVIRONMENT.md` for the full workflow.

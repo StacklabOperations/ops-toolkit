@@ -197,15 +197,17 @@ async function getPartsForSearch(token) {
   if (_partsSearchCache && Date.now() - _partsSearchCacheAt < CACHE_TTL_MS) return _partsSearchCache;
   _partsSearchCache = await fetchAllPages(
     token,
+    // Custom parameters live on the PART, not the revision (confirmed live
+    // 2026-07-20) — read them at the part level, not activeRevision.
     c => `{ parts(first: 200${c ? `, after: "${esc(c)}"` : ''}) {
       pageInfo { hasNextPage endCursor }
       nodes {
         id partNumber manufacturerPn
         partType { name }
         manufacturerFamily { name }
+        customParameters { nodes { name value } }
         activeRevision {
           revisionName comment description
-          customParameters { nodes { name value } }
         }
       }
     }}`,
@@ -213,6 +215,29 @@ async function getPartsForSearch(token) {
   );
   _partsSearchCacheAt = Date.now();
   return _partsSearchCache;
+}
+
+// ── Custom parameters + collection ──────────────────────────────────────────────
+// Custom parameters live on the PART, not the revision (confirmed live 2026-07-20).
+// "Collection" is one of those part-level custom parameters (apiName COL) and is
+// THE collection value for a part — the master. `manufacturerFamily` is a separate,
+// ancillary Aligni field (currently mirrors the collection during testing) and is
+// surfaced under its own name, never conflated with collection.
+// CustomParameter.name is the display name (e.g. "Thickness (mm)", "Collection").
+const COLLECTION_PARAM_NAME = 'Collection'; // display name of the COL custom parameter
+
+// The collection = value of the "Collection" (COL) custom parameter, or null if unset.
+function collectionFromParams(nodes) {
+  const hit = (nodes ?? []).find(cp => (cp.name || '') === COLLECTION_PARAM_NAME);
+  const v = hit?.value;
+  return v == null || v === '' ? null : v;
+}
+
+// Custom parameters for tool output: display name + value, only those actually set.
+function mapCustomParams(nodes) {
+  return (nodes ?? [])
+    .filter(cp => cp.value != null && cp.value !== '')
+    .map(cp => ({ name: cp.name, value: cp.value }));
 }
 
 // ── MCP tool implementations ───────────────────────────────────────────────────
@@ -224,7 +249,7 @@ async function toolSearchParts(args, token) {
   let results = allParts.filter(p => {
     if (!q) return true;
     const rev = p.activeRevision || {};
-    const customParamText = (rev.customParameters?.nodes ?? [])
+    const customParamText = (p.customParameters?.nodes ?? [])
       .map(cp => cp.value ?? '').join(' ').toLowerCase();
     return (p.manufacturerPn || '').toLowerCase().includes(q)
       || (rev.comment || '').toLowerCase().includes(q)
@@ -238,14 +263,15 @@ async function toolSearchParts(args, token) {
   }
   if (collection) {
     results = results.filter(p =>
-      (p.manufacturerFamily?.name || '').toLowerCase() === collection.toLowerCase());
+      (collectionFromParams(p.customParameters?.nodes) || '').toLowerCase() === collection.toLowerCase());
   }
 
   return results.map(p => ({
     partNumber:        p.partNumber,
     manufacturerPn:    p.manufacturerPn,
     partType:          p.partType?.name ?? null,
-    collection:        p.manufacturerFamily?.name ?? null,
+    collection:        collectionFromParams(p.customParameters?.nodes),
+    manufacturerFamily: p.manufacturerFamily?.name ?? null,
     activeRevisionName: p.activeRevision?.revisionName ?? null,
     comment:           p.activeRevision?.comment ?? null,
   }));
@@ -267,10 +293,10 @@ async function toolGetPart(args, token) {
         partNumber manufacturerPn
         partType { name }
         manufacturerFamily { name }
+        customParameters { nodes { name value } }
         unit { name }
         activeRevision {
           revisionName status comment description
-          customParameters { nodes { name value } }
           subparts { nodes {
             quantity designator comment
             childPart {
@@ -295,16 +321,20 @@ async function toolGetPart(args, token) {
     partNumber:      part.partNumber,
     manufacturerPn:  part.manufacturerPn,
     partType:        part.partType?.name ?? null,
-    collection:      part.manufacturerFamily?.name ?? null,
+    // collection = the "Collection" (COL) part-level custom parameter (master).
+    collection:      collectionFromParams(part.customParameters?.nodes),
+    // manufacturerFamily = separate, ancillary Aligni field (currently mirrors
+    // collection during testing) — surfaced under its own name.
+    manufacturerFamily: part.manufacturerFamily?.name ?? null,
     unit:            part.unit?.name ?? null,
+    // Custom parameters live on the Part, not the revision — surfaced at the top
+    // level. Only parameters that are actually set are returned.
+    customParameters: mapCustomParams(part.customParameters?.nodes),
     activeRevision: {
       name:            rev.revisionName,
       status:          rev.status,
       comment:         rev.comment ?? null,
       description:     rev.description ?? null,
-      customParameters: (rev.customParameters?.nodes ?? []).map(cp => ({
-        name: cp.name, value: cp.value,
-      })),
     },
     bom: (rev.subparts?.nodes ?? []).map(sp => ({
       quantity:      sp.quantity,
@@ -661,7 +691,7 @@ const TOOLS = [
         jobName: { type: 'string', description: 'Short human label for this job, e.g. "GP-A-OPEN family BOMs"' },
         operations: {
           type: 'array',
-          description: 'Ordered list of operations. Each item: {op: "createPart", manufacturerPn, partType, unit, manufacturer, description?, comment?, revisionName?, customParameters?: [{name, value}], manufacturedHere?} | {op: "ensureDraft", manufacturerPn, revisionReason?, copyExistingBom?} | {op: "addSubparts", manufacturerPn, replaceExisting?, lines: [{manufacturerPn, quantity, buildSequence?, designator?, comment?}]} | {op: "releaseRevision", manufacturerPn}',
+          description: 'Ordered list of operations. Each item: {op: "createPart", manufacturerPn, partType, unit, manufacturer, description?, comment?, revisionName?, customParameters?: [{name, value}], manufacturedHere?} | {op: "ensureDraft", manufacturerPn, revisionReason?, copyExistingBom?} | {op: "addSubparts", manufacturerPn, replaceExisting?, lines: [{manufacturerPn, quantity, buildSequence?, designator?, comment?}]} | {op: "releaseRevision", manufacturerPn} | {op: "updatePart", manufacturerPn, description?, comment?, customParameters?: [{name, value}], newManufacturerPn?}. updatePart edits only the fields present (partial update — absent fields are never touched or blanked); description/comment edit the active revision in place with no revision bump; customParameters are part-level; newManufacturerPn renames the part.',
           items: { type: 'object' },
         },
       },

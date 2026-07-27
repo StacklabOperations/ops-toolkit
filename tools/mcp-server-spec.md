@@ -179,21 +179,29 @@ parts(first: 200, after: $cursor) {
     id partNumber manufacturerPn
     partType { name }
     manufacturerFamily { name }
+    customParameters { nodes { name value } }   # PART-level — not the revision
     activeRevision { revisionName comment description }
   }
 }
 ```
 Paginated until exhausted. Result cached 5 min in module-level variable.
 
+The substring `query` also matches custom-parameter values. Both this and the
+`collection` filter read `Part.customParameters` (fixed 2026-07-20 — previously
+read `activeRevision.customParameters` and matched nothing). The `collection`
+filter matches the **"Collection" (COL) custom parameter** value, consistent with
+`get_part`.
+
 **Output shape (per item):**
 ```json
 {
-  "partNumber": "100463",
-  "manufacturerPn": "SA-CUT-DISC5-FT-529CHAM3",
-  "partType": "Sheet-Cut Profile",
-  "collection": "FilzFelt",
-  "activeRevisionName": "2",
-  "comment": "5-inch charcoal disc"
+  "partNumber": "102388",
+  "manufacturerPn": "JP-LEG-14L-BR01",
+  "partType": "Leg",
+  "collection": "Jupiter",
+  "manufacturerFamily": null,
+  "activeRevisionName": "10",
+  "comment": "Bronze - Mirror"
 }
 ```
 
@@ -223,10 +231,10 @@ parts(filters: [{field: "manufacturerPn", value: {eq: "$mpn"}}]) {
     partNumber manufacturerPn
     partType { name }
     manufacturerFamily { name }
+    customParameters { nodes { name value } }   # PART-level — not the revision
     unit { name }
     activeRevision {
       revisionName status comment description
-      customParameters { nodes { name value } }
       subparts { nodes {
         quantity designator comment
         childPart {
@@ -243,23 +251,37 @@ Filter field for partNumber lookup: `{field: "partNumber", value: {eq: "..."}}`.
 Note: `manufacturerPn` filter is confirmed working. `partNumber` filter uses the same
 pattern and should work but was not separately verified in production — flag in DEVSUM.
 
+**Custom parameters live on the `Part`, not the revision** (confirmed live
+2026-07-20). The Phase-1 tool read `activeRevision.customParameters` and always
+returned `[]`; it now reads `Part.customParameters`. `CustomParameter.name` is the
+display name (e.g. `Thickness (mm)`), so no apiName mapping is needed for reads.
+Only parameters with a value are returned (null/unset ones are filtered out).
+
+**`collection` vs `manufacturerFamily`.** `collection` is the value of the
+part-level **"Collection" (apiName `COL`) custom parameter** — this is the master
+collection. `manufacturerFamily` is a separate, ancillary Aligni field surfaced
+under its own name (it currently mirrors the collection during testing but is not
+conflated with it). Both are top-level fields in the output.
+
 **Output shape:**
 ```json
 {
-  "partNumber": "100463",
-  "manufacturerPn": "SA-CUT-DISC5-FT-529CHAM3",
-  "partType": "Sheet-Cut Profile",
-  "collection": "FilzFelt",
+  "partNumber": "102388",
+  "manufacturerPn": "JP-LEG-14L-BR01",
+  "partType": "Leg",
+  "collection": "Jupiter",
+  "manufacturerFamily": null,
   "unit": "each",
+  "customParameters": [
+    { "name": "Collection", "value": "Jupiter" },
+    { "name": "Material", "value": "Bronze Alloy C90300" },
+    { "name": "Finish Type", "value": "Bronze - Mirror" }
+  ],
   "activeRevision": {
-    "name": "2",
-    "status": "released",
-    "comment": "...",
-    "description": "...",
-    "customParameters": [
-      { "name": "Thickness (mm)", "value": "3" },
-      { "name": "Colour/Sheen", "value": "Charcoal" }
-    ]
+    "name": "10",
+    "status": "Released",
+    "comment": "Bronze - Mirror",
+    "description": "Jupiter Leg, 14.25in Height, Left-Handed"
   },
   "bom": [
     {
@@ -544,6 +566,9 @@ Takes `{ jobName, operations }`, calls `POST /jobs` on the executor. Runs a
 to review in chat). Never executes. Jobs are immutable; a changed plan means
 a new job.
 
+Op types: `createPart`, `ensureDraft`, `addSubparts`, `releaseRevision`,
+`updatePart`. Full op shapes and semantics: `tools/aligni-write-executor-spec.md`.
+
 ### 9. `execute_write_job`
 
 Takes `{ jobId }`, calls `POST /jobs/:id/execute`. Only valid on a validated,
@@ -600,7 +625,9 @@ hit Aligni's rate limit and receive an error. No coordination exists between the
 Workers' rate limiters.
 
 Mitigation when 30/min ticket resolves: drop `RATE_DELAY_MS` to `2100` in
-`workers/stackabl-mcp/index.js` AND `IMPORT_DELAY` in `tools/bom-importer.html`.
+`workers/stackabl-mcp/index.js` AND `workers/stackabl-write-executor/index.js` —
+the only two places the constant exists. (The old `IMPORT_DELAY` died with
+`tools/bom-importer.html`; that file no longer exists.)
 
 Long-term fix if collisions become real: centralized Durable Object rate limiter
 (see `IDEAS_BACKLOG.md`).

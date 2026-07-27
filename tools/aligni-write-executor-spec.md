@@ -136,6 +136,50 @@ earlier-in-job creations.
   one call (`partRevisionActivate` does not exist).
 - Skipped (not failed) if the revision is already released or no draft exists.
 
+### `updatePart`
+```json
+{
+  "op": "updatePart",
+  "manufacturerPn": "JP-LEG-14L-BR01",          // required — identifies the part
+  "description": "Jupiter Leg, 14.25in Height", // optional (revision-level)
+  "comment": "Bronze - Mirror",                  // optional (revision-level)
+  "customParameters": [                          // optional (part-level; name = display OR apiName)
+    { "name": "Finish Type", "value": "Bronze - Satin" }
+  ],
+  "newManufacturerPn": "JP-LEG-14L-BR02"         // optional — RENAME the part
+}
+```
+**Partial update — the defining rule.** ONLY the fields present in the op are
+written. Absent fields are never touched and never blanked. This op exists
+specifically to escape the legacy bulk-update CSV tool, which blanked Comment on
+every row it touched. Provide at least one of `description` / `comment` /
+`customParameters` / `newManufacturerPn` (an op with none is rejected in
+validation).
+
+- **`description` / `comment`** (revision-level) are edited **in place on the
+  active revision** via `partRevisionUpdate`. Verified live 2026-07-20: this
+  succeeds on a **Released** revision and does **NOT** create a new revision — no
+  revision bump. (No `ensureDraft`/`releaseRevision` composition is performed.)
+- **`customParameters`** (part-level) are written via `partUpdate` (`PartInput`).
+  Same apiName rules as `createPart`: the job may pass the display name
+  ("Finish Type") or the apiName ("FIN1"); the executor resolves to apiName, and
+  an unknown parameter fails the dry run. Per-part-type validity still applies —
+  a globally-defined parameter can be rejected for a given part type, which
+  surfaces as a clean failed op at execution.
+- **`newManufacturerPn`** renames the part via `partUpdate.manufacturerPn`
+  (confirmed supported by the schema and live). The dry-run plan renders it
+  unmistakably: `RENAME: OLD → NEW`. A rename should generally be the last op on
+  a part in a job — later ops that still reference the old MPN will not resolve.
+- **Idempotency:** the op verify-reads current values first. If every requested
+  value already matches (and no rename is pending), the op is **skipped**, not
+  rewritten. Custom-parameter writes send only the values that actually change.
+- Part-level writes (custom parameters + rename) go in ONE `partUpdate` call;
+  revision text (description + comment) in ONE `partRevisionUpdate` call — so an
+  `updatePart` op makes at most two mutations plus the verify-read.
+- Failure semantics match the other ops: a failed `updatePart` records its error,
+  the per-op `writes` log shows what was written before the failure, dependents
+  on the same part are blocked, and only rate-limit errors retry.
+
 ---
 
 ## Endpoints
@@ -235,6 +279,20 @@ dry-run lookups `parts(first:1) → revisions(first:20) → subparts(first:30)`
   (`PartRevisionCreateInput`), not Part fields.
 - Mutation `errors` is `[String!]!` — subscription-limit failures are detected
   by message pattern, not structurally.
+- **Update mutations (added 2026-07-20 for `updatePart`):**
+  `partUpdate(partId: ID!, partInput: PartInput!)` → `{ part, errors }` and
+  `partRevisionUpdate(partRevisionId: ID!, partRevisionInput: PartRevisionUpdateInput!)`
+  → `{ partRevision, errors }`. There is no `PartUpdateInput` type — `partUpdate`
+  takes `PartInput`, which carries `manufacturerPn` (rename), `customParameters`,
+  `manufacturerId`, `partTypeId`, `manufacturedHere`, etc. `PartRevisionUpdateInput`
+  carries `description`, `comment`, `customParameters`, `revisionName`,
+  `revisionReason`, `rohs`. Both `errors` fields are `[String!]!`; field-level
+  failures also surface as `{ data: null, errors: [...] }` and are handled by the
+  shared `aligni()` helper.
+- **`partRevisionUpdate` edits a Released revision in place** (live-tested
+  2026-07-20) — it does NOT force a draft or create a new revision. So editing a
+  released part's description/comment is a light-touch metadata edit, not a
+  revision bump.
 - All other quirks (OperatorScalar inlining, subparts naming, revision
   release/activate, no contains filter, camelCase) as documented in
   DEV_ENVIRONMENT.md.
@@ -265,9 +323,10 @@ dry-run lookups `parts(first:1) → revisions(first:20) → subparts(first:30)`
 3. **These parameters live on the PART, not the revision** (none are
    `revisioned`). The executor sets them at `PartCreateInput.customParameters`
    (part level). Reading them back requires `Part.customParameters`, NOT
-   `Part.activeRevision.customParameters`. ⚠ The Phase-1 `get_part` MCP tool
-   reads them off the revision, so it will show part-level params as empty —
-   a latent read-tool gap to fix when `get_part` is next touched.
+   `Part.activeRevision.customParameters`. ✅ Fixed 2026-07-20: the `get_part` and
+   `search_parts` MCP tools now read `Part.customParameters` (they previously read
+   the revision and always returned empty). `updatePart` writes them via
+   `partUpdate` (`PartInput.customParameters`), also part-level.
 
 4. **A newly created part's initial revision is DRAFT, not active.** So a
    just-created part cannot be used as a BOM *component* in the same job

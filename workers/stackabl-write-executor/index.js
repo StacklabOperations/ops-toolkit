@@ -36,7 +36,7 @@ const INDEX_CAP = 100;            // jobs:index keeps at most this many entries
 const MAX_OPS = 400;              // guardrail; a bigger job should be split
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-const OP_TYPES = ['createPart', 'ensureDraft', 'addSubparts', 'releaseRevision'];
+const OP_TYPES = ['createPart', 'ensureDraft', 'addSubparts', 'releaseRevision', 'updatePart'];
 
 // ── Module-level state (best-effort within a warm isolate) ─────────────────────
 let _lastAligniCallAt = 0;
@@ -226,6 +226,20 @@ const ASSEMBLY_SHAPE = `nodes { id partNumber manufacturerPn
 const COMPONENT_SHAPE = `nodes { id partNumber manufacturerPn
   activeRevision { id revisionName } }`;
 
+// updatePart dry-run lookup: current values so the plan can show old → new.
+// Custom parameters live on the Part; description/comment on the active revision.
+const UPDATE_SHAPE = `nodes { id partNumber manufacturerPn
+  customParameters(first: 60) { nodes { name value } }
+  activeRevision { id revisionName status description comment } }`;
+
+// Truncate long text for readable plan lines.
+function truncate(s, n = 60) { s = String(s ?? ''); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+// Render an "old → new" change for the dry-run plan; unset old shows as (unset).
+function fmtOldNew(oldV, newV) {
+  const o = oldV == null || oldV === '' ? '(unset)' : `"${truncate(oldV)}"`;
+  return `${o} → "${truncate(newV)}"`;
+}
+
 async function batchLookup(env, state, mpns, shape, chunkSize) {
   const out = {};
   const unique = [...new Set(mpns)];
@@ -254,6 +268,19 @@ async function lookupAssembly(env, state, mpn) {
   return data.parts?.nodes?.[0] ?? null;
 }
 
+// Fresh single-part read for updatePart execution — current custom parameters and
+// active-revision text, used as the verify-read (idempotency) and old-value source.
+async function lookupUpdateTarget(env, state, mpn) {
+  const data = await aligni(env, state, `{
+    parts(first: 1, filters: [{ field: "manufacturerPn", value: { eq: "${esc(mpn)}" } }]) {
+      nodes { id partNumber manufacturerPn
+        customParameters(first: 60) { nodes { name value } }
+        activeRevision { id revisionName status description comment } }
+    }
+  }`);
+  return data.parts?.nodes?.[0] ?? null;
+}
+
 // ── Mutations (variables are fine here — only filter values need inlining) ─────
 const M_PART_CREATE = `mutation($input: PartCreateInput!) {
   partCreate(partInput: $input) {
@@ -275,6 +302,20 @@ const M_SUBPART_DELETE = `mutation($id: ID!) {
 const M_REV_RELEASE = `mutation($id: ID!) {
   partRevisionRelease(partRevisionId: $id, partRevisionReleaseInput: { revisionActive: true }) {
     partRevision { id revisionName status active } errors
+  } }`;
+
+// updatePart writes: part-level fields (custom parameters, rename) via partUpdate;
+// revision-level text (description, comment) via partRevisionUpdate on the ACTIVE
+// revision — verified live 2026-07-20 that this edits a RELEASED revision in place
+// with NO revision bump. Both payloads expose `errors: [String!]!`.
+const M_PART_UPDATE = `mutation($id: ID!, $input: PartInput!) {
+  partUpdate(partId: $id, partInput: $input) {
+    part { id partNumber manufacturerPn } errors
+  } }`;
+
+const M_REV_UPDATE = `mutation($id: ID!, $input: PartRevisionUpdateInput!) {
+  partRevisionUpdate(partRevisionId: $id, partRevisionInput: $input) {
+    partRevision { id revisionName status description comment } errors
   } }`;
 
 // Aligni docs flag subscription part-limit as a real partCreate failure mode.
@@ -324,6 +365,25 @@ function structuralErrors(job) {
         if (!(q > 0)) errs.push(`${tag}: lines[${k}] (${ln?.manufacturerPn ?? '?'}) needs quantity > 0.`);
       });
     }
+    if (op.op === 'updatePart') {
+      // Partial update: only the fields present are touched. Require at least one.
+      const hasChange = op.description != null || op.comment != null
+        || op.customParameters != null || op.newManufacturerPn != null;
+      if (!hasChange)
+        errs.push(`${tag} (updatePart ${op.manufacturerPn}): nothing to update — provide at least one of description, comment, customParameters, newManufacturerPn.`);
+      if (op.customParameters != null) {
+        if (!Array.isArray(op.customParameters)) errs.push(`${tag}: customParameters must be an array of {name, value}.`);
+        else op.customParameters.forEach((cp, k) => {
+          if (!cp || !cp.name || cp.value == null) errs.push(`${tag}: customParameters[${k}] needs name and value.`);
+        });
+      }
+      if (op.newManufacturerPn != null) {
+        if (typeof op.newManufacturerPn !== 'string' || !op.newManufacturerPn.trim())
+          errs.push(`${tag} (updatePart ${op.manufacturerPn}): newManufacturerPn must be a non-empty string.`);
+        else if (op.newManufacturerPn.trim() === op.manufacturerPn)
+          errs.push(`${tag} (updatePart ${op.manufacturerPn}): newManufacturerPn is identical to manufacturerPn — no rename needed.`);
+      }
+    }
   });
   return errs;
 }
@@ -338,16 +398,18 @@ async function dryRun(env, job) {
   const createdInJob = new Set(
     job.operations.filter((o) => o.op === 'createPart').map((o) => o.manufacturerPn));
 
-  // Reference lists — only when the job mints parts.
+  // Reference lists — units/types/manufacturers only when the job mints parts.
   let units = [], partTypes = [], manufacturers = [], paramFields = [];
   const jobHasCustomParams = job.operations.some(
-    (o) => o.op === 'createPart' && (o.customParameters || []).length);
+    (o) => (o.op === 'createPart' || o.op === 'updatePart') && (o.customParameters || []).length);
   if (createdInJob.size > 0) {
     units = await getUnits(env, state);
     partTypes = await getPartTypes(env, state);
     manufacturers = await getManufacturers(env, state);
-    if (jobHasCustomParams) paramFields = await getParamFields(env, state);
   }
+  // Parameter field definitions are needed whenever ANY op sets custom parameters
+  // (createPart or updatePart) — so unknown parameters fail the dry run, not mid-run.
+  if (jobHasCustomParams) paramFields = await getParamFields(env, state);
 
   // Batched lookups.
   const targetMpns = job.operations
@@ -362,6 +424,14 @@ async function dryRun(env, job) {
   const assemblies = await batchLookup(env, state,
     [...targetMpns, ...createMpns].filter(Boolean), ASSEMBLY_SHAPE, ASSEMBLY_CHUNK);
   const components = await batchLookup(env, state, componentMpns, COMPONENT_SHAPE, COMPONENT_CHUNK);
+
+  // updatePart needs each target's CURRENT values to render old → new in the plan.
+  // Parts created earlier in the same job have no live values yet (updateTargets
+  // is null for them) — the plan then shows the new values without an old value.
+  const updateMpns = job.operations
+    .filter((o) => o.op === 'updatePart' && !createdInJob.has(o.manufacturerPn))
+    .map((o) => o.manufacturerPn).filter(Boolean);
+  const updateTargets = await batchLookup(env, state, updateMpns, UPDATE_SHAPE, ASSEMBLY_CHUNK);
 
   // Component revision cache for the whole job (shared parts like O-CUT-DISC5
   // are looked up once — same optimisation as the retired bom-importer).
@@ -484,6 +554,54 @@ async function dryRun(env, job) {
         s.hasDraft = false; s.draftLabel = null;
       } else {
         entry.action = `${mpn}: no draft is expected to exist at this point — release will be skipped.`;
+      }
+    } else if (op.op === 'updatePart') {
+      estimatedCalls += 3; // verify-read + up to partUpdate + partRevisionUpdate
+      const cur = updateTargets[mpn] || null; // null if created earlier in this job
+      const curRev = cur?.activeRevision || {};
+      const curParams = cur?.customParameters?.nodes ?? [];
+      const changes = [];
+      let noChange = true;
+
+      if (op.description != null) {
+        changes.push(`description: ${fmtOldNew(curRev.description, op.description)}`);
+        if (!cur || op.description !== curRev.description) noChange = false;
+      }
+      if (op.comment != null) {
+        changes.push(`comment: ${fmtOldNew(curRev.comment, op.comment)}`);
+        if (!cur || op.comment !== curRev.comment) noChange = false;
+      }
+
+      // Resolve custom-parameter display names to apiNames now, so an unknown
+      // parameter fails the dry run (Aligni rejects the whole partUpdate on one).
+      const badParams = [];
+      if ((op.customParameters || []).length) {
+        const resolved = op.customParameters.map((cp) => {
+          const apiName = resolveParamApiName(paramFields, cp.name);
+          if (!apiName) badParams.push(cp.name);
+          const oldVal = apiName
+            ? (curParams.find((x) => resolveParamApiName(paramFields, x.name) === apiName)?.value ?? null)
+            : null;
+          return { display: cp.name, apiName, value: String(cp.value), old: oldVal };
+        });
+        op._resolvedParams = resolved.map((r) => ({ name: r.apiName, value: r.value }));
+        resolved.forEach((r) => {
+          changes.push(`${r.display}: ${fmtOldNew(r.old, r.value)}`);
+          if (!cur || r.old !== r.value) noChange = false;
+        });
+      }
+
+      if (op.newManufacturerPn != null) {
+        changes.push(`RENAME: ${mpn} → ${op.newManufacturerPn}`);
+        if (!cur || op.newManufacturerPn !== cur.manufacturerPn) noChange = false;
+      }
+
+      if (badParams.length) {
+        entry.error = `Unknown custom parameter${badParams.length > 1 ? 's' : ''}: ${badParams.join(', ')}. Valid parameters: ${paramFields.map((f) => f.name).join(', ')}.`;
+      } else if (cur && noChange) {
+        entry.action = `${mpn} (P/N ${cur.partNumber}) already matches the requested values — this update will be skipped.`;
+      } else {
+        entry.action = `Update ${mpn}${cur ? ` (P/N ${cur.partNumber})` : ''} — ${changes.join('; ')}. Only these fields change; everything else is left untouched. Text edits apply in place to the active revision (no new revision is created).`;
       }
     }
 
@@ -822,11 +940,136 @@ async function execReleaseRevision(env, op, ctx) {
   };
 }
 
+// updatePart: partial, idempotent edit of an existing part. ONLY the fields present
+// in the op are written; absent fields are never touched or blanked (this is the
+// whole point — it replaces the legacy CSV bulk-update that blanked Comment).
+// - custom parameters (part-level) and rename go through one partUpdate call
+// - description/comment go through partRevisionUpdate on the ACTIVE revision,
+//   edited in place with NO revision bump (verified live 2026-07-20)
+async function execUpdatePart(env, op, ctx) {
+  const state = { lastCallAt: ctx.lastCallAt, calls: 0 };
+  const writes = [];
+  const mpn = op.manufacturerPn;
+
+  // Verify-read: current values gate idempotency and prove partial-update safety.
+  let part = await lookupUpdateTarget(env, state, mpn);
+  // Idempotent rename: a checkpoint-retry (or re-run) may find the rename already
+  // applied. Continue with the renamed part so any remaining edits still land —
+  // renameNeeds computes false below because manufacturerPn already matches.
+  if (!part && op.newManufacturerPn) {
+    part = await lookupUpdateTarget(env, state, op.newManufacturerPn);
+  }
+  if (!part) {
+    return {
+      result: { status: 'failed', message: 'Part not found at execution time.', error: { code: 'NOT_FOUND', message: `Part ${mpn} not found.` } },
+      refsDelta: {}, state, writes,
+    };
+  }
+
+  const rev = part.activeRevision || {};
+  const curParams = part.customParameters?.nodes ?? [];
+
+  // Custom parameters: resolve to apiName and keep only those whose value changes.
+  let paramWrites = [];
+  if ((op.customParameters || []).length) {
+    const fields = await getParamFields(env, state);
+    const curByApi = {};
+    for (const x of curParams) {
+      const api = resolveParamApiName(fields, x.name);
+      if (api) curByApi[api] = x.value;
+    }
+    const requested = (op._resolvedParams && op._resolvedParams.every((r) => r.name))
+      ? op._resolvedParams.map((r) => ({ name: r.name, value: String(r.value) }))
+      : op.customParameters.map((cp) => ({ name: resolveParamApiName(fields, cp.name), value: String(cp.value) }));
+    paramWrites = requested.filter((r) => r.name && curByApi[r.name] !== r.value);
+  }
+
+  const descNeeds = op.description != null && op.description !== (rev.description ?? null);
+  const commentNeeds = op.comment != null && op.comment !== (rev.comment ?? null);
+  const renameNeeds = op.newManufacturerPn != null && op.newManufacturerPn !== part.manufacturerPn;
+
+  // Idempotency: nothing to change ⇒ skipped, not a rewrite.
+  if (!paramWrites.length && !descNeeds && !commentNeeds && !renameNeeds) {
+    return {
+      result: { status: 'skipped', message: 'All requested values already match — no changes needed.', partNumber: part.partNumber },
+      refsDelta: { [mpn]: { partId: part.id, partNumber: part.partNumber, activeRevId: rev.id ?? null } },
+      state, writes,
+    };
+  }
+
+  const changed = [];
+  const errors = [];
+
+  // Part-level: custom parameters and/or rename in a single partUpdate call.
+  if (paramWrites.length || renameNeeds) {
+    const input = {
+      ...(paramWrites.length ? { customParameters: paramWrites } : {}),
+      ...(renameNeeds ? { manufacturerPn: op.newManufacturerPn } : {}),
+    };
+    const data = await aligni(env, state, M_PART_UPDATE, { id: part.id, input });
+    const payload = data.partUpdate;
+    if (payload.errors?.length) {
+      errors.push(classifyMutationError(payload.errors));
+    } else {
+      if (paramWrites.length) {
+        writes.push(`partUpdate ${mpn} customParameters [${paramWrites.map((p) => p.name).join(', ')}]`);
+        changed.push(`${paramWrites.length} custom parameter${paramWrites.length > 1 ? 's' : ''}`);
+      }
+      if (renameNeeds) {
+        writes.push(`partUpdate ${mpn} → renamed ${op.newManufacturerPn}`);
+        changed.push(`renamed to ${op.newManufacturerPn}`);
+      }
+    }
+  }
+
+  // Revision-level: description/comment edited IN PLACE on the active revision.
+  if ((descNeeds || commentNeeds) && rev.id) {
+    const input = {
+      ...(descNeeds ? { description: op.description } : {}),
+      ...(commentNeeds ? { comment: op.comment } : {}),
+    };
+    const data = await aligni(env, state, M_REV_UPDATE, { id: rev.id, input });
+    const payload = data.partRevisionUpdate;
+    if (payload.errors?.length) {
+      errors.push(classifyMutationError(payload.errors));
+    } else {
+      if (descNeeds) { writes.push(`partRevisionUpdate ${mpn} rev ${rev.revisionName} description`); changed.push('description'); }
+      if (commentNeeds) { writes.push(`partRevisionUpdate ${mpn} rev ${rev.revisionName} comment`); changed.push('comment'); }
+    }
+  } else if ((descNeeds || commentNeeds) && !rev.id) {
+    errors.push({ code: 'NO_REVISION', message: `Part ${mpn} has no active revision to edit description/comment.` });
+  }
+
+  if (errors.length) {
+    return {
+      result: {
+        status: 'failed',
+        message: `Update partially failed${changed.length ? ` (applied: ${changed.join(', ')})` : ''}.`,
+        error: errors[0],
+        partNumber: part.partNumber,
+      },
+      refsDelta: {}, state, writes,
+    };
+  }
+
+  const finalMpn = renameNeeds ? op.newManufacturerPn : part.manufacturerPn;
+  return {
+    result: {
+      status: 'success',
+      message: `Updated ${finalMpn}: ${changed.join(', ')}. Untouched fields left as-is.`,
+      partNumber: part.partNumber,
+    },
+    refsDelta: { [finalMpn]: { partId: part.id, partNumber: part.partNumber, activeRevId: rev.id ?? null } },
+    state, writes,
+  };
+}
+
 const EXECUTORS = {
   createPart: execCreatePart,
   ensureDraft: execEnsureDraft,
   addSubparts: execAddSubparts,
   releaseRevision: execReleaseRevision,
+  updatePart: execUpdatePart,
 };
 
 // ── The Workflow: durable, unattended execution ────────────────────────────────

@@ -131,6 +131,13 @@ Worker source code lives at worker/worker.js in this repo.
   (assembly revision) + subpartPartRevisionId (component active revision)
 - partRevisionRelease(partRevisionId, partRevisionReleaseInput): releases 
   a draft; use revisionActive: true to simultaneously set as active
+- partUpdate(partId, partInput: PartInput): part-level edits — customParameters,
+  and manufacturerPn (RENAME is supported). No PartUpdateInput type exists; it
+  takes PartInput. Payload { part, errors }.
+- partRevisionUpdate(partRevisionId, partRevisionInput: PartRevisionUpdateInput):
+  edits description, comment, customParameters, revisionName, revisionReason, rohs.
+  Confirmed live 2026-07-20: edits a RELEASED revision IN PLACE with no revision
+  bump. Payload { partRevision, errors }. Used by the write executor's updatePart op.
 
 ### GraphQL operations reference — vendors, manufacturers & contacts (confirmed working)
 Schema introspected 2026-04-29. All confirmed against live schema.
@@ -162,6 +169,14 @@ Schema introspected 2026-04-29. All confirmed against live schema.
   Thickness (mm)=TH, Material=MAT, Colour/Sheen=FIN2, …), live at the PART
   level not the revision, and validity is constrained by part type. See
   tools/aligni-write-executor-spec.md → "Custom parameters — hard-won details".
+- **Custom parameters live on `Part`, not `PartRevision`** (confirmed live
+  2026-07-20). Read them via `Part.customParameters`; `activeRevision.customParameters`
+  is always empty. `CustomParameter.name` returns the display name, so reads need
+  no apiName mapping. `get_part` and `search_parts` were fixed to read the Part.
+- **"Collection" is a custom parameter (apiName COL) — it is THE collection.**
+  `Part.manufacturerFamily` is a separate, ancillary field (currently mirrors the
+  collection during testing, often null) and is surfaced under its own name, never
+  as "collection". The MCP `collection` output/filter reads the COL parameter.
 
 ### Disc geometry (for inventory calculations)
 - 5in disc: 0.252 sqft per disc
@@ -337,7 +352,7 @@ stackabl-write-executor; gates the executor's POST endpoints).
 | Tool | File | What it does |
 |------|------|-------------|
 | Felt Inventory Dashboard | tools/felt-inventory.html | Live felt inventory with available sqft and linear inch calculations by colour |
-| Write Executor | workers/stackabl-write-executor/index.js | Server-side Aligni write jobs (create parts, BOMs, releases): dry-run plan → explicit execute → unattended durable execution via Cloudflare Workflow. Replaced the browser BOM importer 2026-07-11 — spec: tools/aligni-write-executor-spec.md |
+| Write Executor | workers/stackabl-write-executor/index.js | Server-side Aligni write jobs (create parts, BOMs, releases, partial part updates incl. rename): dry-run plan → explicit execute → unattended durable execution via Cloudflare Workflow. Replaced the browser BOM importer 2026-07-11; updatePart op added 2026-07-20 — spec: tools/aligni-write-executor-spec.md |
 | Write Jobs Dashboard | tools/write-jobs.html | Read-only status/history for write-executor jobs; submits nothing |
 | MCP Server | workers/stackabl-mcp/index.js | 7 read tools + 3 write-job tools for Claude.ai (writes delegated to the write executor) |
 
